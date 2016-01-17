@@ -361,6 +361,7 @@ data DumpFlag
    | Opt_D_dump_hi_diffs
    | Opt_D_dump_mod_cycles
    | Opt_D_dump_mod_map
+   | Opt_D_dump_late_float
    | Opt_D_dump_view_pattern_commoning
    | Opt_D_verbose_core2core
    | Opt_D_dump_debug
@@ -433,6 +434,25 @@ data GeneralFlag
    | Opt_Loopification                  -- See Note [Self-recursive tail calls]
    | Opt_CprAnal
    | Opt_WorkerWrapper
+
+   | Opt_ProtectLastValArg
+   | Opt_IgnoreRealWorld
+
+   | Opt_NoLNE
+
+   | Opt_LLF        -- ^ Enable the late lambda lift pass
+   | Opt_LLF_AbsLNE        -- ^ allowed to abstract LNE variables?
+   | Opt_LLF_AbsUnsat        -- ^ allowed to abstract undersaturated applied let-bound variables?
+   | Opt_LLF_AbsSat        -- ^ allowed to abstract      saturated applied let-bound variables?
+   | Opt_LLF_AbsOversat       -- ^ allowed to abstract  oversaturated applied let-bound variables?
+   | Opt_LLF_CreatePAPs        -- ^ allowed to float function bindings that occur unapplied
+   | Opt_LLF_Simpl        -- ^ follow the late lambda lift with a simplification pass?
+   | Opt_LLF_Stabilize
+   | Opt_LLF_UseStr        -- ^ use strictness in the late lambda float
+   | Opt_LLF_IgnoreLNEClo        -- ^ predict LNEs in the late lambda float
+   | Opt_LLF_FloatLNE0        -- ^ float zero-arity LNEs
+   | Opt_LLF_OneShot
+   | Opt_LLF_LeaveLNE
 
    -- Interface files
    | Opt_IgnoreInterfacePragmas
@@ -657,6 +677,12 @@ data DynFlags = DynFlags {
   liberateCaseThreshold :: Maybe Int,   -- ^ Threshold for LiberateCase
   floatLamArgs          :: Maybe Int,   -- ^ Arg count for lambda floating
                                         --   See CoreMonad.FloatOutSwitches
+
+  lateFloatNonRecLam    :: Maybe Int,   -- ^ Limit on # abstracted variables for *late* non-recursive function floating (Nothing => all, Just 0 => none)
+  lateFloatRecLam       :: Maybe Int,   -- ^   "    " "     "          "     for *late*     recursive function floating
+  lateFloatIfInClo      :: Maybe Int,   -- ^ Limit on # abstracted variables for floating a binding that occurs in a closure
+  lateFloatCloGrowth    :: Maybe Int,   -- ^ Limit on # additional free variables for closures in which the function occurs
+  lateFloatCloGrowthInLam :: Maybe Int,
 
   historySize           :: Int,
 
@@ -1440,6 +1466,13 @@ defaultDynFlags mySettings =
         specConstrCount         = Just 3,
         specConstrRecursive     = 3,
         liberateCaseThreshold   = Just 2000,
+
+        lateFloatNonRecLam      = Just 0,
+        lateFloatRecLam         = Just 0,
+        lateFloatIfInClo        = Nothing,
+        lateFloatCloGrowth      = Just 0,
+        lateFloatCloGrowthInLam = Just 0,
+
         floatLamArgs            = Just 0, -- Default: float only if no fvs
 
         historySize             = 20,
@@ -1750,6 +1783,7 @@ dopt f dflags = (fromEnum f `IntSet.member` dumpFlags dflags)
           enableIfVerbose Opt_D_dump_view_pattern_commoning = False
           enableIfVerbose Opt_D_dump_mod_cycles             = False
           enableIfVerbose Opt_D_dump_mod_map                = False
+          enableIfVerbose Opt_D_dump_late_float             = False
           enableIfVerbose _                                 = True
 
 -- | Set a 'DumpFlag'
@@ -2536,6 +2570,7 @@ dynamic_flags = [
   , defGhcFlag "ddump-ticked"            (setDumpFlag Opt_D_dump_ticked)
   , defGhcFlag "ddump-mod-cycles"        (setDumpFlag Opt_D_dump_mod_cycles)
   , defGhcFlag "ddump-mod-map"           (setDumpFlag Opt_D_dump_mod_map)
+  , defGhcFlag "ddump-llf"               (setDumpFlag Opt_D_dump_late_float)
   , defGhcFlag "ddump-view-pattern-commoning"
       (setDumpFlag Opt_D_dump_view_pattern_commoning)
   , defGhcFlag "ddump-to-file"           (NoArg (setGeneralFlag Opt_DumpToFile))
@@ -2642,6 +2677,37 @@ dynamic_flags = [
       (intSuffix (\n d -> d{ floatLamArgs = Just n }))
   , defFlag "ffloat-all-lams"
       (noArg (\d -> d{ floatLamArgs = Nothing }))
+
+  , defFlag "fllf-nonrec-lam-limit"
+      (intSuffix (\n d -> d{ lateFloatNonRecLam = Just n }))
+  , defFlag "fllf-nonrec-lam-any"
+      (noArg       (\d -> d{ lateFloatNonRecLam = Nothing }))
+  , defFlag "fno-llf-nonrec-lam"
+      (noArg       (\d -> d{ lateFloatNonRecLam = Just 0 }))
+  , defFlag "fllf-rec-lam-limit"
+      (intSuffix (\n d -> d{ lateFloatRecLam = Just n }))
+  , defFlag "fllf-rec-lam-any"
+      (noArg       (\d -> d{ lateFloatRecLam = Nothing }))
+  , defFlag "fno-llf-rec-lam"
+      (noArg       (\d -> d{ lateFloatRecLam = Just 0 }))
+  , defFlag "fllf-clo-growth-limit"
+      (intSuffix (\n d -> d{ lateFloatCloGrowth = Just n }))
+  , defFlag "fllf-clo-growth-any"
+      (noArg       (\d -> d{ lateFloatCloGrowth = Nothing }))
+  , defFlag "fno-llf-clo-growth"
+      (noArg       (\d -> d{ lateFloatCloGrowth = Just 0 }))
+  , defFlag "fllf-in-clo-limit"
+      (intSuffix (\n d -> d{ lateFloatIfInClo = Just n }))
+  , defFlag "fllf-in-clo-any"
+      (noArg       (\d -> d{ lateFloatIfInClo = Nothing }))
+  , defFlag "fno-llf-in-clo"
+      (noArg       (\d -> d{ lateFloatIfInClo = Just 0 }))
+  , defFlag "fllf-clo-growth-in-lam-limit"
+      (intSuffix (\n d -> d{ lateFloatCloGrowthInLam = Just n }))
+  , defFlag "fllf-clo-growth-in-lam-any"
+      (noArg       (\d -> d{ lateFloatCloGrowthInLam = Nothing }))
+  , defFlag "fno-llf-clo-growth-in-lam"
+      (noArg       (\d -> d{ lateFloatCloGrowthInLam = Just 0 }))
 
   , defFlag "fhistory-size"           (intSuffix (\n d -> d{ historySize = n }))
 
@@ -3069,7 +3135,24 @@ fFlags = [
   flagSpec "vectorisation-avoidance"          Opt_VectorisationAvoidance,
   flagSpec "vectorise"                        Opt_Vectorise,
   flagSpec "worker-wrapper"                   Opt_WorkerWrapper,
-  flagSpec "full-guard-reasoning"             Opt_FullGuardReasoning
+  flagSpec "full-guard-reasoning"             Opt_FullGuardReasoning,
+  flagSpec "loopification"                    Opt_Loopification,
+
+
+  flagSpec "no-LNE"                           Opt_NoLNE,
+
+  flagSpec "llf"                              Opt_LLF,
+  flagSpec "llf-abstract-undersat"            Opt_LLF_AbsUnsat,
+  flagSpec "llf-abstract-sat"                 Opt_LLF_AbsSat,
+  flagSpec "llf-abstract-oversat"             Opt_LLF_AbsOversat,
+  flagSpec "llf-create-PAPs"                  Opt_LLF_CreatePAPs,
+  flagSpec "llf-simpl"                        Opt_LLF_Simpl,
+  flagSpec "llf-stabilize"                    Opt_LLF_Stabilize,
+  flagSpec "llf-use-strictness"               Opt_LLF_UseStr,
+  flagSpec "llf-ignore-LNE-clo"               Opt_LLF_IgnoreLNEClo,
+  flagSpec "llf-LNE0"                         Opt_LLF_FloatLNE0,
+  flagSpec "llf-oneshot"                      Opt_LLF_OneShot,
+  flagSpec "llf-leave-LNE"                    Opt_LLF_LeaveLNE
   ]
 
 -- | These @-f\<blah\>@ flags can all be reversed with @-fno-\<blah\>@

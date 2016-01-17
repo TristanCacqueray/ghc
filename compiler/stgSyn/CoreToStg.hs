@@ -191,9 +191,9 @@ coreToStg dflags this_mod pgm
   = return pgm'
   where (_, _, pgm') = coreTopBindsToStg dflags this_mod emptyVarEnv pgm
 
-coreExprToStg :: CoreExpr -> StgExpr
-coreExprToStg expr
-  = new_expr where (new_expr,_,_) = initLne emptyVarEnv (coreToStgExpr expr)
+coreExprToStg :: DynFlags -> CoreExpr -> StgExpr
+coreExprToStg dflags expr
+  = new_expr where (new_expr,_,_) = initLne dflags emptyVarEnv (coreToStgExpr expr)
 
 
 coreTopBindsToStg
@@ -227,7 +227,7 @@ coreTopBindToStg dflags this_mod env body_fvs (NonRec id rhs)
         how_bound = LetBound TopLet $! manifestArity rhs
 
         (stg_rhs, fvs') =
-            initLne env $ do
+            initLne dflags env $ do
               (stg_rhs, fvs') <- coreToTopStgRhs dflags this_mod body_fvs (id,rhs)
               return (stg_rhs, fvs')
 
@@ -250,7 +250,7 @@ coreTopBindToStg dflags this_mod env body_fvs (Rec pairs)
         env' = extendVarEnvList env extra_env'
 
         (stg_rhss, fvs')
-          = initLne env' $ do
+          = initLne dflags env' $ do
                (stg_rhss, fvss') <- mapAndUnzipM (coreToTopStgRhs dflags this_mod body_fvs) pairs
                let fvs' = unionFVInfos fvss'
                return (stg_rhss, fvs')
@@ -732,8 +732,13 @@ coreToStgLet let_no_escape bind body = do
         checked_no_binder_escapes
                 | debugIsOn && not no_binder_escapes && any is_join_var binders
                 = pprTrace "Interesting!  A join var that isn't let-no-escaped" (ppr binders)
-                  False
+                  no_binder_escapes
+                | debugIsOn && no_binder_escapes && any ((0 ==) . idArity) binders
+                = pprTrace "Interesting!  A let-no-escape with zero arity" (ppr binders)
+                  no_binder_escapes
                 | otherwise = no_binder_escapes
+
+    noLNE <- getNoLNE
 
                 -- Mustn't depend on the passed-in let_no_escape flag, since
                 -- no_binder_escapes is used by the caller to derive the flag!
@@ -741,7 +746,7 @@ coreToStgLet let_no_escape bind body = do
         new_let,
         free_in_whole_let,
         let_escs,
-        checked_no_binder_escapes
+        not noLNE && checked_no_binder_escapes
       )
   where
     set_of_binders = mkVarSet binders
@@ -897,6 +902,7 @@ isPAP env _               = False
 newtype LneM a = LneM
     { unLneM :: IdEnv HowBound
              -> LiveInfo                -- Vars and CAFs live in continuation
+             -> Bool -- disable LNE?
              -> a
     }
 
@@ -971,8 +977,8 @@ getLiveVars (lvs, _) = lvs
 
 -- The std monad functions:
 
-initLne :: IdEnv HowBound -> LneM a -> a
-initLne env m = unLneM m env emptyLiveInfo
+initLne :: DynFlags -> IdEnv HowBound -> LneM a -> a
+initLne dflags env m = unLneM m env emptyLiveInfo (gopt Opt_NoLNE dflags)
 
 
 
@@ -980,11 +986,11 @@ initLne env m = unLneM m env emptyLiveInfo
 {-# INLINE returnLne #-}
 
 returnLne :: a -> LneM a
-returnLne e = LneM $ \_ _ -> e
+returnLne e = LneM $ \_ _ _ -> e
 
 thenLne :: LneM a -> (a -> LneM b) -> LneM b
-thenLne m k = LneM $ \env lvs_cont
-  -> unLneM (k (unLneM m env lvs_cont)) env lvs_cont
+thenLne m k = LneM $ \env lvs_cont noLNE
+  -> unLneM (k (unLneM m env lvs_cont noLNE)) env lvs_cont noLNE
 
 instance Functor LneM where
     fmap = liftM
@@ -997,27 +1003,30 @@ instance Monad LneM where
     (>>=)  = thenLne
 
 instance MonadFix LneM where
-    mfix expr = LneM $ \env lvs_cont ->
-                       let result = unLneM (expr result) env lvs_cont
+    mfix expr = LneM $ \env lvs_cont noLNE ->
+                       let result = unLneM (expr result) env lvs_cont noLNE
                        in  result
 
 -- Functions specific to this monad:
 
 getVarsLiveInCont :: LneM LiveInfo
-getVarsLiveInCont = LneM $ \_env lvs_cont -> lvs_cont
+getVarsLiveInCont = LneM $ \_env lvs_cont _noLNE -> lvs_cont
+
+getNoLNE :: LneM Bool
+getNoLNE = LneM $ \_env _lvs_cont noLNE -> noLNE
 
 setVarsLiveInCont :: LiveInfo -> LneM a -> LneM a
 setVarsLiveInCont new_lvs_cont expr
-   =    LneM $   \env _lvs_cont
-   -> unLneM expr env new_lvs_cont
+   =    LneM $   \env _lvs_cont noLNE
+   -> unLneM expr env new_lvs_cont noLNE
 
 extendVarEnvLne :: [(Id, HowBound)] -> LneM a -> LneM a
 extendVarEnvLne ids_w_howbound expr
-   =    LneM $   \env lvs_cont
-   -> unLneM expr (extendVarEnvList env ids_w_howbound) lvs_cont
+   =    LneM $   \env lvs_cont noLNE
+   -> unLneM expr (extendVarEnvList env ids_w_howbound) lvs_cont noLNE
 
 lookupVarLne :: Id -> LneM HowBound
-lookupVarLne v = LneM $ \env _lvs_cont -> lookupBinding env v
+lookupVarLne v = LneM $ \env _lvs_cont _noLNE -> lookupBinding env v
 
 lookupBinding :: IdEnv HowBound -> Id -> HowBound
 lookupBinding env v = case lookupVarEnv env v of
@@ -1032,7 +1041,7 @@ lookupBinding env v = case lookupVarEnv env v of
 freeVarsToLiveVars :: FreeVarsInfo -> LneM LiveInfo
 freeVarsToLiveVars fvs = LneM freeVarsToLiveVars'
  where
-  freeVarsToLiveVars' _env live_in_cont = live_info
+  freeVarsToLiveVars' _env live_in_cont _noLNE = live_info
    where
     live_info    = foldr unionLiveInfo live_in_cont lvs_from_fvs
     lvs_from_fvs = map do_one (allFreeIds fvs)

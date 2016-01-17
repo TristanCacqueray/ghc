@@ -17,6 +17,7 @@
    floated out it will be unique.  (This used to be done by the simplifier
    but the latter now only ensures that there's no shadowing; indeed, even
    that may not be true.)
+   (Also, see Note [The Reason SetLevels Does Substitution].)
 
    NOTE: this can't be done using the uniqAway idea, because the variable
          must be unique in the whole program, not just its current scope,
@@ -43,6 +44,7 @@
 -}
 
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE BangPatterns #-}
 module SetLevels (
         setLevels,
 
@@ -55,15 +57,30 @@ module SetLevels (
 
 #include "HsVersions.h"
 
+import StaticFlags
+import DynFlags
+
+import CorePrep
 import CoreSyn
-import CoreMonad        ( FloatOutSwitches(..) )
-import CoreUtils        ( exprType, exprOkForSpeculation, exprIsBottom )
+import CoreUnfold       ( mkInlineableUnfolding )
+import CoreMonad        ( FloatOutSwitches(..), FinalPassSwitches(..) )
+import CoreUtils        ( exprType, exprOkForSpeculation, exprIsHNF, exprIsBottom )
 import CoreArity        ( exprBotStrictness_maybe )
 import CoreFVs          -- all of it
 import CoreSubst
 import MkCore           ( sortQuantVars )
+
+import SMRep            ( WordOff )
+import StgCmmArgRep     ( ArgRep(P), argRepSizeW, toArgRep )
+import StgCmmLayout     ( mkVirtHeapOffsets )
+import StgCmmClosure    ( idPrimRep, addIdReps )
+
+import qualified TidyPgm
+
+import Demand           ( isStrictDmd, splitStrictSig )
 import Id
 import IdInfo
+import Coercsion        ( tyCoVarsOfCo )
 import Var
 import VarSet
 import VarEnv
@@ -71,14 +88,21 @@ import Literal          ( litIsTrivial )
 import Demand           ( StrictSig )
 import Name             ( getOccName, mkSystemVarName )
 import OccName          ( occNameString )
-import Type             ( isUnLiftedType, Type, mkPiTypes )
-import BasicTypes       ( Arity, RecFlag(..) )
+import Type             ( isUnLiftedType, Type, mkPiTypes, tyVarsOfType, typePrimRep )
+import BasicTypes       ( Arity, RecFlag(..), isNonRec )
 import UniqSupply
 import Util
 import Outputable
 import FastString
 import UniqDFM (udfmToUfm)
 import FV
+
+import MonadUtils       ( mapAndUnzipM )
+import Data.Maybe       ( mapMaybe )
+import qualified Data.List
+
+import Control.Applicative ( Applicative(..) )
+import qualified Control.Monad
 
 {-
 ************************************************************************
@@ -92,7 +116,9 @@ type LevelledExpr = TaggedExpr FloatSpec
 type LevelledBind = TaggedBind FloatSpec
 type LevelledBndr = TaggedBndr FloatSpec
 
-data Level = Level Int  -- Major level: number of enclosing value lambdas
+-- | How many lambdas enclose an expression?
+type MajorLevel = Int
+data Level = Level MajorLevel  -- Major level: number of enclosing value lambdas
                    Int  -- Minor level: number of big-lambda and/or case
                         -- expressions between here and the nearest
                         -- enclosing value lambda
@@ -124,7 +150,7 @@ a_0 = let  b_? = ...  in
            x_1 = ... b ... in ...
 \end{verbatim}
 
-The main function @lvlExpr@ carries a ``context level'' (@ctxt_lvl@).
+The main function @lvlExpr@ carries a ``context level'' (@le_ctxt_lvl@).
 That's meant to be the level number of the enclosing binder in the
 final (floated) program.  If the level number of a sub-expression is
 less than that of the context, then it might be worth let-binding the
@@ -207,33 +233,46 @@ instance Eq Level where
 ************************************************************************
 -}
 
-setLevels :: FloatOutSwitches
+setLevels :: DynFlags
+          -> FloatOutSwitches
           -> CoreProgram
           -> UniqSupply
           -> [LevelledBind]
 
-setLevels float_lams binds us
+setLevels dflags float_lams binds us
   = initLvl us (do_them init_env binds)
   where
-    init_env = initialEnv float_lams
+    init_env = initialEnv dflags float_lams
 
     do_them :: LevelEnv -> [CoreBind] -> LvlM [LevelledBind]
     do_them _ [] = return []
     do_them env (b:bs)
-      = do { (lvld_bind, env') <- lvlTopBind env b
+      = do { (lvld_bind, env') <- lvlTopBind dflags env b
            ; lvld_binds <- do_them env' bs
            ; return (lvld_bind : lvld_binds) }
 
-lvlTopBind :: LevelEnv -> Bind Id -> LvlM (LevelledBind, LevelEnv)
-lvlTopBind env (NonRec bndr rhs)
-  = do { rhs' <- lvlExpr env (freeVars rhs)
-       ; let (env', [bndr']) = substAndLvlBndrs NonRecursive env tOP_LEVEL [bndr]
-       ; return (NonRec bndr' rhs', env') }
+lvlTopBind :: DynFlags -> LevelEnv -> Bind Id -> LvlM (LevelledBind, LevelEnv)
+lvlTopBind dflags env (NonRec bndr rhs)
+  = do { rhs' <- lvlExpr env (analyzeFVs (initFVEnv $ finalPass env) rhs)
+       ; let  -- lambda lifting impedes specialization, so: if the old
+              -- RHS has an unstable unfolding that will survive
+              -- TidyPgm, "stablize it" so that it ends up in the .hi
+              -- file as-is, prior to LLF squeezing all of the juice out
+              expose_all = gopt Opt_ExposeAllUnfoldings  dflags
+              stab_bndr
+                | isFinalPass env
+                , gopt Opt_LLF_Stabilize dflags
+                , snd $ TidyPgm.addExternal expose_all bndr
+                , isUnstableUnfolding (realIdUnfolding bndr)
+                  = bndr `setIdUnfolding` mkInlinableUnfolding dflags rhs
+                | otherwise = bndr
+       ; let (env', [bndr']) = substAndLvlBndrs NonRecursive env tOP_LEVEL [stab_bndr]
 
-lvlTopBind env (Rec pairs)
+-- TODO, NSF 15 June 2014: shouldn't we stablize rec bindings too? They're not all loopbreakers
+lvlTopBind _ env (Rec pairs)
   = do let (bndrs,rhss) = unzip pairs
            (env', bndrs') = substAndLvlBndrs Recursive env tOP_LEVEL bndrs
-       rhss' <- mapM (lvlExpr env' . freeVars) rhss
+       rhss' <- mapM (lvlExpr env' . analyzeFVs (initFVEnv $ finalPass env)) rhss
        return (Rec (bndrs' `zip` rhss'), env')
 
 {-
@@ -259,7 +298,7 @@ will almost certainly be optimised away anyway.
 -}
 
 lvlExpr :: LevelEnv             -- Context
-        -> CoreExprWithFVs      -- Input expression
+        -> CoreExprWithBoth     -- Input expression
         -> LvlM LevelledExpr    -- Result expression
 
 {-
@@ -270,9 +309,9 @@ binder.  Here's an example
                                         ..x..
                            in ..
 
-When looking at the rhs of @r@, @ctxt_lvl@ will be 1 because that's
+When looking at the rhs of @r@, @le_ctxt_lvl@ will be 1 because that's
 the level of @r@, even though it's inside a level-2 @\y@.  It's
-important that @ctxt_lvl@ is 1 and not 2 in @r@'s rhs, because we
+important that @le_ctxt_lvl@ is 1 and not 2 in @r@'s rhs, because we
 don't want @lvlExpr@ to turn the scrutinee of the @case@ into an MFE
 --- because it isn't a *maximal* free expression.
 
@@ -337,7 +376,8 @@ lvlExpr env expr@(_, AnnLam {})
   = do { new_body <- lvlMFE True new_env body
        ; return (mkLams new_bndrs new_body) }
   where
-    (bndrs, body)        = collectAnnBndrs expr
+    (bndrsTB, body)      = collectAnnBndrs expr
+    bndrs                = map unTag bndrsTB
     (env1, bndrs1)       = substBndrsSL NonRecursive env bndrs
     (new_env, new_bndrs) = lvlLamBndrs env1 (le_ctxt_lvl env) bndrs1
         -- At one time we called a special verion of collectBinders,
@@ -357,7 +397,7 @@ lvlExpr env (_, AnnLet bind body)
 
 lvlExpr env (_, AnnCase scrut case_bndr ty alts)
   = do { scrut' <- lvlMFE True env scrut
-       ; lvlCase env (freeVarsOf scrut) scrut' case_bndr ty alts }
+       ; lvlCase env (freeVarsOf scrut) scrut' (unTag case_bndr) ty (map unTagAnnAlt alts) }
 
 -------------------------------------------
 lvlCase :: LevelEnv             -- Level of in-scope names/tyvars

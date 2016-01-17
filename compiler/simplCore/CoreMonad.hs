@@ -11,6 +11,7 @@ module CoreMonad (
     CoreToDo(..), runWhen, runMaybe,
     SimplifierMode(..),
     FloatOutSwitches(..),
+    FinalPassSwitches(..),
     pprPassDetails,
 
     -- * Plugins
@@ -148,30 +149,30 @@ data CoreToDo           -- These are diff core-to-core passes,
   | CorePrep
 
 instance Outputable CoreToDo where
-  ppr (CoreDoSimplify _ _)     = ptext (sLit "Simplifier")
-  ppr (CoreDoPluginPass s _)   = ptext (sLit "Core plugin: ") <+> text s
-  ppr CoreDoFloatInwards       = ptext (sLit "Float inwards")
-  ppr (CoreDoFloatOutwards f)  = ptext (sLit "Float out") <> parens (ppr f)
-  ppr CoreLiberateCase         = ptext (sLit "Liberate case")
-  ppr CoreDoStaticArgs         = ptext (sLit "Static argument")
-  ppr CoreDoCallArity          = ptext (sLit "Called arity analysis")
-  ppr CoreDoStrictness         = ptext (sLit "Demand analysis")
-  ppr CoreDoWorkerWrapper      = ptext (sLit "Worker Wrapper binds")
-  ppr CoreDoSpecialising       = ptext (sLit "Specialise")
-  ppr CoreDoSpecConstr         = ptext (sLit "SpecConstr")
-  ppr CoreCSE                  = ptext (sLit "Common sub-expression")
-  ppr CoreDoVectorisation      = ptext (sLit "Vectorisation")
-  ppr CoreDesugar              = ptext (sLit "Desugar (before optimization)")
-  ppr CoreDesugarOpt           = ptext (sLit "Desugar (after optimization)")
-  ppr CoreTidy                 = ptext (sLit "Tidy Core")
-  ppr CorePrep                 = ptext (sLit "CorePrep")
-  ppr CoreDoPrintCore          = ptext (sLit "Print core")
-  ppr (CoreDoRuleCheck {})     = ptext (sLit "Rule check")
-  ppr CoreDoNothing            = ptext (sLit "CoreDoNothing")
-  ppr (CoreDoPasses passes)    = ptext (sLit "CoreDoPasses") <+> ppr passes
+  ppr (CoreDoSimplify _ _)     = text "Simplifier"
+  ppr (CoreDoPluginPass s _)   = text "Core plugin: " <+> text s
+  ppr CoreDoFloatInwards       = text "Float inwards"
+  ppr (CoreDoFloatOutwards f)  = text "Float out" <> parens (ppr f)
+  ppr CoreLiberateCase         = text "Liberate case"
+  ppr CoreDoStaticArgs         = text "Static argument"
+  ppr CoreDoCallArity          = text "Called arity analysis"
+  ppr CoreDoStrictness         = text "Demand analysis"
+  ppr CoreDoWorkerWrapper      = text "Worker Wrapper binds"
+  ppr CoreDoSpecialising       = text "Specialise"
+  ppr CoreDoSpecConstr         = text "SpecConstr"
+  ppr CoreCSE                  = text "Common sub-expression"
+  ppr CoreDoVectorisation      = text "Vectorisation"
+  ppr CoreDesugar              = text "Desugar (before optimization)"
+  ppr CoreDesugarOpt           = text "Desugar (after optimization)"
+  ppr CoreTidy                 = text "Tidy Core"
+  ppr CorePrep                 = text "CorePrep"
+  ppr CoreDoPrintCore          = text "Print core"
+  ppr (CoreDoRuleCheck {})     = text "Rule check"
+  ppr CoreDoNothing            = text "CoreDoNothing"
+  ppr (CoreDoPasses passes)    = text "CoreDoPasses" <+> ppr passes
 
 pprPassDetails :: CoreToDo -> SDoc
-pprPassDetails (CoreDoSimplify n md) = vcat [ ptext (sLit "Max iterations =") <+> int n
+pprPassDetails (CoreDoSimplify n md) = vcat [ text "Max iterations =" <+> int n
                                             , ppr md ]
 pprPassDetails _ = Outputable.empty
 
@@ -189,15 +190,15 @@ instance Outputable SimplifierMode where
     ppr (SimplMode { sm_phase = p, sm_names = ss
                    , sm_rules = r, sm_inline = i
                    , sm_eta_expand = eta, sm_case_case = cc })
-       = ptext (sLit "SimplMode") <+> braces (
-         sep [ ptext (sLit "Phase =") <+> ppr p <+>
+       = text "SimplMode" <+> braces (
+         sep [ text "Phase =" <+> ppr p <+>
                brackets (text (concat $ intersperse "," ss)) <> comma
              , pp_flag i   (sLit "inline") <> comma
              , pp_flag r   (sLit "rules") <> comma
              , pp_flag eta (sLit "eta-expand") <> comma
              , pp_flag cc  (sLit "case-of-case") ])
          where
-           pp_flag f s = ppUnless f (ptext (sLit "no")) <+> ptext s
+           pp_flag f s = ppUnless f (text "no") <+> ptext s
 
 data FloatOutSwitches = FloatOutSwitches {
   floatOutLambdas   :: Maybe Int,  -- ^ Just n <=> float lambdas to top level, if
@@ -210,21 +211,68 @@ data FloatOutSwitches = FloatOutSwitches {
 
   floatOutConstants :: Bool,       -- ^ True <=> float constants to top level,
                                    --            even if they do not escape a lambda
-  floatOutOverSatApps :: Bool      -- ^ True <=> float out over-saturated applications
+  floatOutOverSatApps :: Bool,     -- ^ True <=> float out over-saturated applications
                                    --            based on arity information.
                                    -- See Note [Floating over-saturated applications]
                                    -- in SetLevels
+  finalPass_ :: Maybe FinalPassSwitches
+  -- ^ Nothing <=> not the final pass, behave like normal
   }
+
+data FinalPassSwitches = FinalPassSwitches
+  { fps_rec               :: !(Maybe Int)
+  -- ^ used as floatOutLambdas for recursive lambdas
+  , fps_absUnsatVar       :: !Bool
+  -- ^ abstract over undersaturated applied variables?
+  , fps_absSatVar         :: !Bool
+  -- ^ abstract over exactly saturated applied variables? Doing so might lose some fast entries
+  , fps_absOversatVar     :: !Bool
+  -- ^ abstracting over oversaturated applied variables?
+  , fps_createPAPs        :: !Bool
+  -- ^ allowed to float functions occuring unapplied
+  , fps_cloGrowth         :: !(Maybe Int)
+  -- ^ limits the number of free variables added to closures using the floated function
+  , fps_ifInClo           :: !(Maybe Int)
+  -- ^ limits the number of abstracted variables allowed if the binder occurs in a closure
+  , fps_stabilizeFirst    :: !Bool
+  -- ^ stabilizes an unstable unfolding before floating things out of
+  -- it, since floating out precludes specialization at the call-site
+  , fps_cloGrowthInLam    :: !(Maybe Int)
+  -- ^ disallow the floating of a binding if it occurs in closure that
+  -- is allocated inside a lambda
+  , fps_trace             :: !Bool
+  , fps_strictness        :: !Bool
+  , fps_ignoreLNEClo      :: !Bool
+  , fps_floatLNE0         :: !Bool
+  , fps_oneShot           :: !Bool
+  , fps_leaveLNE          :: !Bool
+  }
+
 instance Outputable FloatOutSwitches where
     ppr = pprFloatOutSwitches
 
 pprFloatOutSwitches :: FloatOutSwitches -> SDoc
 pprFloatOutSwitches sw
-  = ptext (sLit "FOS") <+> (braces $
+  = text "FOS" <+> (braces $
      sep $ punctuate comma $
-     [ ptext (sLit "Lam =")    <+> ppr (floatOutLambdas sw)
-     , ptext (sLit "Consts =") <+> ppr (floatOutConstants sw)
-     , ptext (sLit "OverSatApps =")   <+> ppr (floatOutOverSatApps sw) ])
+     [ text "Lam ="    <+> ppr (floatOutLambdas sw)
+     , text "Consts =" <+> ppr (floatOutConstants sw)
+     , text "OverSatApps ="   <+> ppr (floatOutOverSatApps sw)
+     , text "Late ="   <+> ppr (finalPass_ sw)])
+
+instance Outputable FinalPassSwitches where
+    ppr = pprFinalPassSwitches
+
+pprFinalPassSwitches :: FinalPassSwitches -> SDoc
+pprFinalPassSwitches sw = sep $ punctuate comma
+  [ text "Rec ="                <+> ppr (fps_rec sw)
+  , text "AbsUnsatVar ="        <+> ppr (fps_absUnsatVar sw)
+  , text "AbsSatVar ="          <+> ppr (fps_absSatVar sw)
+  , text "AbsOversatVar ="      <+> ppr (fps_absOversatVar sw)
+  , text "ClosureGrowth ="      <+> ppr (fps_cloGrowth sw)
+  , text "ClosureGrowthInLam =" <+> ppr (fps_cloGrowthInLam sw)
+  , text "StabilizeFirst ="     <+> ppr (fps_stabilizeFirst sw)
+  ]
 
 -- The core-to-core pass ordering is derived from the DynFlags:
 runWhen :: Bool -> CoreToDo -> CoreToDo
@@ -360,14 +408,14 @@ plusSimplCount (VerySimplCount n) (VerySimplCount m) = VerySimplCount (n+m)
 plusSimplCount _                  _                  = panic "plusSimplCount"
        -- We use one or the other consistently
 
-pprSimplCount (VerySimplCount n) = ptext (sLit "Total ticks:") <+> int n
+pprSimplCount (VerySimplCount n) = text "Total ticks:" <+> int n
 pprSimplCount (SimplCount { ticks = tks, details = dts, log1 = l1, log2 = l2 })
-  = vcat [ptext (sLit "Total ticks:    ") <+> int tks,
+  = vcat [text "Total ticks:    " <+> int tks,
           blankLine,
           pprTickCounts dts,
           if verboseSimplStats then
                 vcat [blankLine,
-                      ptext (sLit "Log (most recent first)"),
+                      text "Log (most recent first)",
                       nest 4 (vcat (map ppr l1) $$ vcat (map ppr l2))]
           else Outputable.empty
     ]

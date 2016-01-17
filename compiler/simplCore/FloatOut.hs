@@ -120,9 +120,9 @@ floatOutwards :: FloatOutSwitches
 
 floatOutwards float_sws dflags us pgm
   = do {
-        let { annotated_w_levels = setLevels float_sws pgm us ;
-              (fss, binds_s')    = unzip (map floatTopBind annotated_w_levels)
-            } ;
+	let { annotated_w_levels = setLevels dflags float_sws pgm us ;
+	      (fss, binds_s')    = unzip (map floatTopBind annotated_w_levels)
+	    } ;
 
         dumpIfSet_dyn dflags Opt_D_verbose_core2core "Levels added:"
                   (vcat (map ppr annotated_w_levels));
