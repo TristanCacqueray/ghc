@@ -1350,11 +1350,11 @@ newtype LvlM a = LvlM (UniqSM (a, PinnedLBFs))
 instance Functor LvlM where fmap = Control.Monad.liftM
 
 instance Applicative LvlM where
-  pure = return
+  pure a = LvlM $ return (a, emptyVarEnv)
   (<*>) = Control.Monad.ap
 
 instance Monad LvlM where
-  return a = LvlM $ return (a, emptyVarEnv)
+  return = pure
   LvlM m >>= k = LvlM $ m >>= \ ~(a, w) ->
     case k a of
       LvlM m -> m >>= \ ~(b, w') -> return (b, plusVarEnv_C (\ ~(id, x) ~(_, y) -> (id, unionDVarSet x y)) w w')
