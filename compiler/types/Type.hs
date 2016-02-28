@@ -116,7 +116,7 @@ module Type (
 
         -- * Type free variables
         tyCoVarsOfType, tyCoVarsOfTypes, tyCoVarsOfTypeAcc,
-        tyCoVarsOfTypeDSet,
+        tyCoVarsOfTypeDSet, tyCoVarsOfCoDSet,
         coVarsOfType,
         coVarsOfTypes, closeOverKinds,
         splitDepVarsOfType, splitDepVarsOfTypes,

@@ -22,7 +22,7 @@ module CoreFVs (
         exprSomeFreeVars, exprsSomeFreeVars,
 
         -- * Free variables of Rules, Vars and Ids
-        varTypeTyCoVars,
+        varTypeTyCoVars, dVarTypeTyCoVars,
         varTypeTyCoVarsAcc,
         idUnfoldingVars, idFreeVars, dIdFreeVars,
         idRuleAndUnfoldingVars, idRuleAndUnfoldingVarsDSet,
