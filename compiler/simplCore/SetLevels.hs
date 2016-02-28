@@ -82,7 +82,6 @@ import qualified TidyPgm
 import Demand           ( isStrictDmd, splitStrictSig )
 import Id
 import IdInfo
-import Coercion         ( tyCoVarsOfCo )
 import Var
 import VarSet
 import VarEnv
@@ -91,20 +90,18 @@ import Demand           ( StrictSig )
 import Name             ( getOccName, mkSystemVarName )
 import OccName          ( occNameString )
 import Type             ( isUnLiftedType, Type, mkPiTypes , typePrimRep
-                        , tyCoVarsOfType, tyCoVarsOfTypeDSet, tyCoVarsOfCoDSet )
+                        , tyCoVarsOfTypeDSet, tyCoVarsOfCoDSet )
 import BasicTypes       ( Arity, RecFlag(..), isNonRec )
 import UniqSupply
 import Util
 import Outputable
 import FastString
-import UniqDFM (udfmToUfm)
 import FV
 
 import MonadUtils       ( mapAndUnzipM )
 import Data.Maybe       ( mapMaybe )
 import qualified Data.List
 
-import Control.Applicative ( Applicative(..) )
 import qualified Control.Monad
 
 {-
@@ -790,9 +787,9 @@ lvlBind env binding@(AnnNonRec (TB bndr _) rhs)
 
     perhapsFloat dest_lvl abs_vars
       | (isTopLvl dest_lvl && isUnLiftedType (idType bndr)) = doNotFloat
-	  -- We can't float an unlifted binding to top level, so we don't
-	  -- float it at all.  It's a bit brutal, but unlifted bindings
-	  -- aren't expensive either
+          -- We can't float an unlifted binding to top level, so we don't
+          -- float it at all.  It's a bit brutal, but unlifted bindings
+          -- aren't expensive either
       -- Otherwise we are going to float
       | null abs_vars
       = do {  -- No type abstraction; clone existing binder
@@ -830,7 +827,7 @@ lvlBind env binding@(AnnRec pairsTB) = let
       ; new_rhss <- mapM (lvlFloatRhs abs_vars dest_lvl new_env) rhss
       ; return ( Rec ([TB b (FloatMe dest_lvl) | b <- new_bndrs] `zip` new_rhss)
                , new_env
- 	       )
+               )
       }
 
 decideBindFloat :: LevelEnv
@@ -1222,16 +1219,16 @@ data LevelEnv
         -- We also use these envs when making a variable polymorphic
         -- because we want to float it out past a big lambda.
         --
- 	-- The le_subst and le_env always implement the same mapping,
- 	-- but the le_subst maps to CoreExpr whereas the le_env maps
- 	-- to a (possibly nullary) type application.  There is never
- 	-- any real difference between the two ranges, but sadly the
- 	-- types differ.  The le_subst is used when substituting in a
- 	-- variable's IdInfo; the le_env when we find a Var.
+        -- The le_subst and le_env always implement the same mapping,
+        -- but the le_subst maps to CoreExpr whereas the le_env maps
+        -- to a (possibly nullary) type application.  There is never
+        -- any real difference between the two ranges, but sadly the
+        -- types differ.  The le_subst is used when substituting in a
+        -- variable's IdInfo; the le_env when we find a Var.
         --
- 	-- In addition the le_env representation caches the free
- 	-- tyvars range, just so we don't have to call freeVars on the
- 	-- type application repeatedly.
+        -- In addition the le_env representation caches the free
+        -- tyvars range, just so we don't have to call freeVars on the
+        -- type application repeatedly.
         --
         -- The domain of the both envs is *pre-cloned* Ids, though
         --
@@ -1543,14 +1540,14 @@ data BSilt
 -- | A Core case alternative annotated with both free variables and 'FISilt'.
 type CoreAltWithBoth = (AltCon, [Id], CoreExprWithBoth)
 
-type CoreExprWithBoth = AnnExpr (TaggedBndr (Bool,BSilt)) (FVAnn, FISilt)
-type CoreBindWithBoth = AnnBind (TaggedBndr (Bool,BSilt)) (FVAnn, FISilt)
+type CoreExprWithBoth = AnnExpr (TaggedBndr (Bool,BSilt)) (DVarSet, FISilt)
+type CoreBindWithBoth = AnnBind (TaggedBndr (Bool,BSilt)) (DVarSet, FISilt)
 
 siltOf :: CoreExprWithBoth -> FISilt
 siltOf = snd . fst
 
 fvsOf :: CoreExprWithBoth -> DVarSet
-fvsOf = freeVarsOfAnn . fst . fst
+fvsOf = fst . fst
 
 data FII = FII {fii_var :: !Var, fii_useInfo :: !UseInfo}
 
@@ -1803,7 +1800,7 @@ floatFVUp manages the whole transformation
 --
 -- see Note [FVUp] for semantics of E, F, and E'
 data FVUp = FVUp {
-  fvu_fvs :: FVAnn,       -- ^ free vars of E
+  fvu_fvs :: DVarSet,     -- ^ free vars of E
   fvu_escapes :: DIdSet,  -- ^ variables that occur escapingly in E; see
                           -- Note [recognizing LNE]
 
@@ -1817,7 +1814,7 @@ data FVUp = FVUp {
 
 litFVUp :: FVUp
 litFVUp = FVUp {
-  fvu_fvs = noFVs,
+  fvu_fvs = emptyDVarSet,
   fvu_escapes = emptyDVarSet,
   fvu_floats = emptyFloats,
   fvu_silt = emptySilt,
@@ -1829,7 +1826,7 @@ typeFVUp tyvars = litFVUp {fvu_fvs = tyvars}
 
 varFVUp :: Var -> Bool -> Bool -> UseInfo -> FVUp
 varFVUp v escapes nonTopLevel usage = FVUp {
-  fvu_fvs     = if local                  then aFreeVar v         else noFVs,
+  fvu_fvs     = if local                  then unitDVarSet v      else emptyDVarSet,
   fvu_escapes = if nonTopLevel && escapes then unitDVarSet v      else emptyDVarSet,
   fvu_floats  = emptyFloats,
   fvu_silt = if nonTopLevel then FISilt [] (unitFIIs v usage) NilSk else emptySilt,
@@ -1942,8 +1939,8 @@ analyzeFVs env e = fst $ runIdentity $ analyzeFVsM env e
 boringBinder :: CoreBndr -> TaggedBndr (Bool,BSilt)
 boringBinder b = TB b (False, BoringB)
 
-ret :: FVUp -> a -> FVM (((FVAnn, FISilt), a), FVUp)
-ret up x = return (((fvu_fvs up, fvu_silt up), x), up)
+ret :: FVUp -> a -> FVM (((DVarSet, FISilt), a), FVUp)
+ret up x = return (((fvu_fvs up,fvu_silt up),x),up)
 
 analyzeFVsM :: FVEnv -> CoreExpr -> FVM (CoreExprWithBoth, FVUp)
 analyzeFVsM  env (Var v) = ret up $ AnnVar v where

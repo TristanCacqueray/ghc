@@ -215,6 +215,10 @@ data FloatOutSwitches = FloatOutSwitches {
                                    --            based on arity information.
                                    -- See Note [Floating over-saturated applications]
                                    -- in SetLevels
+  floatOutPartialApplications :: Bool,
+  -- ^ True <=> float out partial applications based on arity
+  -- information.
+
   finalPass_ :: Maybe FinalPassSwitches
   -- ^ Nothing <=> not the final pass, behave like normal
   }
@@ -258,6 +262,7 @@ pprFloatOutSwitches sw
      [ text "Lam ="    <+> ppr (floatOutLambdas sw)
      , text "Consts =" <+> ppr (floatOutConstants sw)
      , text "OverSatApps ="   <+> ppr (floatOutOverSatApps sw)
+     , text "PartialApps ="   <+> ppr (floatOutPartialApplications sw)
      , text "Late ="   <+> ppr (finalPass_ sw)])
 
 instance Outputable FinalPassSwitches where

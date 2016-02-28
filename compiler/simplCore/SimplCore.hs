@@ -253,6 +253,7 @@ getCoreToDo dflags
                                  floatOutLambdas   = Just 0,
                                  floatOutConstants = True,
                                  floatOutOverSatApps = False,
+                                 floatOutPartialApplications = False,
                                  finalPass_        = Nothing },
                 -- Was: gentleFloatOutSwitches
                 --
@@ -305,6 +306,7 @@ getCoreToDo dflags
                                  floatOutLambdas   = floatLamArgs dflags,
                                  floatOutConstants = True,
                                  floatOutOverSatApps = True,
+                                 floatOutPartialApplications = True,
                                  finalPass_        = Nothing },
                 -- nofib/spectral/hartel/wang doubles in speed if you
                 -- do full laziness late in the day.  It only happens
