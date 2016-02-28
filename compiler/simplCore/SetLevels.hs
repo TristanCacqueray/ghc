@@ -98,6 +98,7 @@ import Outputable
 import FastString
 import FV
 
+import Data.Functor.Identity
 import MonadUtils       ( mapAndUnzipM )
 import Data.Maybe       ( mapMaybe )
 import qualified Data.List
@@ -1725,14 +1726,6 @@ allLazyNested is_rec (FIFloats okToSpec _ _ _ _) = case okToSpec of
   NotOkToSpec -> False
   IfUnboxedOk -> isNonRec is_rec
 
-newtype Identity a = Identity {runIdentity :: a}
-instance Functor Identity where fmap = Control.Monad.liftM
-instance Applicative Identity where
-  pure = return
-  (<*>) = Control.Monad.ap
-instance Monad Identity where
-  return = Identity
-  Identity a >>= f = f a
 type FVM = Identity
 
 {-
