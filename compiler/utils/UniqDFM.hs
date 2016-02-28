@@ -33,6 +33,7 @@ module UniqDFM (
         alterUDFM,
         mapUDFM,
         plusUDFM,
+        plusUDFM_C,
         lookupUDFM,
         elemUDFM,
         foldUDFM,
@@ -58,7 +59,7 @@ import Outputable
 import qualified Data.IntMap as M
 import Data.Typeable
 import Data.Data
-import Data.List (sortBy)
+import Data.List (sortBy, foldl')
 import Data.Function (on)
 import UniqFM (UniqFM, listToUFM_Directly, ufmToList)
 
@@ -192,6 +193,17 @@ plusUDFM udfml@(UDFM _ i) udfmr@(UDFM _ j)
 
 insertUDFMIntoLeft :: UniqDFM elt -> UniqDFM elt -> UniqDFM elt
 insertUDFMIntoLeft udfml udfmr = addListToUDFM_Directly udfml $ udfmToList udfmr
+
+plusUDFM_C :: (elt -> elt -> elt) -> UniqDFM elt -> UniqDFM elt -> UniqDFM elt
+plusUDFM_C f a b = foldl' insert b' (udfmToList a')
+  where
+    insert env0 (u, x) = alterUDFM g env0 u
+      where g (Just y) = Just (f y x)
+            g Nothing  = Just x
+
+    (a', b')
+      | sizeUDFM a < sizeUDFM b = (a, b)
+      | otherwise               = (b, a)
 
 lookupUDFM :: Uniquable key => UniqDFM elt -> key -> Maybe elt
 lookupUDFM (UDFM m _i) k = taggedFst `fmap` M.lookup (getKey $ getUnique k) m
