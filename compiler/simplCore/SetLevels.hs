@@ -298,9 +298,9 @@ top level -- but then they must be applied to a constant dictionary and
 will almost certainly be optimised away anyway.
 -}
 
-lvlExpr :: LevelEnv             -- Context
-        -> CoreExprWithBoth     -- Input expression
-        -> LvlM LevelledExpr    -- Result expression
+lvlExpr :: LevelEnv             -- ^ Context
+        -> CoreExprWithBoth     -- ^ Input expression
+        -> LvlM LevelledExpr    -- ^ Result expression
 
 {-
 The @le_ctxt_lvl@ is, roughly, the level of the innermost enclosing
@@ -484,10 +484,10 @@ binding site.
 That's why we apply exprOkForSpeculation to scrut' and not to scrut.
 -}
 
-lvlMFE ::  Bool                 -- True <=> strict context [body of case or let]
-        -> LevelEnv             -- Level of in-scope names/tyvars
-        -> CoreExprWithBoth     -- input expression
-        -> LvlM LevelledExpr    -- Result expression
+lvlMFE ::  Bool                -- ^ True <=> strict context [body of case or let]
+       -> LevelEnv             -- ^ level of in-scope names/tyvars
+       -> CoreExprWithBoth     -- ^ input expression
+       -> LvlM LevelledExpr    -- ^ result expression
 -- lvlMFE is just like lvlExpr, except that it might let-bind
 -- the expression, so that it can itself be floated.
 
@@ -998,11 +998,11 @@ decideLateLambdaFloat env isRec isLNE all_one_shot abs_ids_set badTime spaceInfo
     wORDS_PTR = StgCmmArgRep.argRepSizeW (le_dflags env) StgCmmArgRep.P
 
 -- see Note [Preserving Fast Entries]
-wouldIncreaseRuntime ::
-  LevelEnv ->
-  [Id] ->      -- ^ the abstracted value ids
-  FIIs ->      -- ^ FIIs for the bindings' RHS
-  DVarSet      -- ^ the forgotten ids
+wouldIncreaseRuntime
+  :: LevelEnv
+  -> [Id]      -- ^ the abstracted value ids
+  -> FIIs      -- ^ FIIs for the bindings' RHS
+  -> DVarSet   -- ^ the forgotten ids
 wouldIncreaseRuntime env abs_ids binding_group_fiis = case prjFlags `fmap` finalPass env of
   -- is final pass...
   Just (noUnder, noExact, noOver) | noUnder || noExact || noOver ->
@@ -1032,21 +1032,21 @@ expandFloatedIds env = foldl snoc emptyDVarSet . dVarSetElems where
                               extendDVarSetList acc abs_ids
       | otherwise          -> extendDVarSet     acc new_id
 
-wouldIncreaseAllocation ::
-  LevelEnv ->
-  Bool ->
-  DIdSet ->         -- ^ the abstracted value ids
-  [(Id, FISilt)] -> -- ^ the bindings in the binding group with each's
+wouldIncreaseAllocation
+  :: LevelEnv
+  -> Bool
+  -> DIdSet         -- ^ the abstracted value ids
+  -> [(Id, FISilt)] -- ^ the bindings in the binding group with each's
                     -- silt
-  FISilt ->         -- ^ the entire scope of the binding group
-  [] -- for each binder:
-    ( Bool -- would create PAPs
-    , WordOff  -- size of this closure group
-    , WordOff  -- estimated increase for closures that are NOT
-               -- allocated under a lambda
-    , WordOff  -- estimated increase for closures that ARE allocated
-               -- under a lambda
-    )
+  -> FISilt         -- ^ the entire scope of the binding group
+  -> [] -- for each binder:
+        ( Bool     -- would create PAPs
+        , WordOff  -- size of this closure group
+        , WordOff  -- estimated increase for closures that are NOT
+                   -- allocated under a lambda
+        , WordOff  -- estimated increase for closures that ARE allocated
+                   -- under a lambda
+        )
 wouldIncreaseAllocation env isLNE abs_ids_set pairs (FISilt _ scope_fiis scope_sk)
   | isLNE = map (const (False,0,0,0)) pairs
   | otherwise = flip map bndrs $ \bndr -> case lookupDVarEnv scope_fiis bndr of
@@ -1107,7 +1107,8 @@ lvlFloatRhs abs_vars dest_lvl env rhs
 ************************************************************************
 -}
 
-substAndLvlBndrs :: RecFlag -> LevelEnv -> Level -> [InVar] -> (LevelEnv, [LevelledBndr])
+substAndLvlBndrs :: RecFlag -> LevelEnv -> Level -> [InVar]
+                 -> (LevelEnv, [LevelledBndr])
 substAndLvlBndrs is_rec env lvl bndrs
   = lvlBndrs subst_env lvl subst_bndrs
   where
@@ -1124,8 +1125,8 @@ substBndrsSL is_rec env@(LE { le_subst = subst, le_env = id_env }) bndrs
                          NonRecursive -> substBndrs    subst bndrs
                          Recursive    -> substRecBndrs subst bndrs
 
+-- | Compute the levels for the binders of a lambda group
 lvlLamBndrs :: LevelEnv -> Level -> [OutVar] -> (LevelEnv, [LevelledBndr])
--- Compute the levels for the binders of a lambda group
 lvlLamBndrs env lvl bndrs
   = lvlBndrs env new_lvl bndrs
   where
