@@ -1,4 +1,4 @@
-# 
+#
 # (c) Simon Marlow 2002
 #
 
@@ -9,7 +9,7 @@
 # variable config below.  The fields of the structure are filled in by
 # the appropriate config script(s) for this compiler/platform, in
 # ../config.
-# 
+#
 # Bits of the structure may also be filled in from the command line,
 # via the build system, using the '-e' option to runtests.
 
@@ -70,7 +70,7 @@ class TestConfig:
 
         # Flags we always give to this compiler
         self.compiler_always_flags = []
-        
+
         # Which ways to run tests (when compiling and running respectively)
         # Other ways are added from the command line if we have the appropriate
         # libraries.
@@ -109,13 +109,23 @@ class TestConfig:
         # the timeout program
         self.timeout_prog = ''
         self.timeout = 300
-        
+
         # threads
         self.threads = 1
         self.use_threads = 0
 
         # Should we skip performance tests
         self.skip_perf_tests = False
+
+        # Only do performance tests
+        self.only_perf_tests = False
+
+        # Should we dump statistics to git notes?
+        self.use_git_notes = False
+        # To accumulate the metrics for the git notes
+        self.accumulate_metrics = []
+        # Has the user defined a custom test environment? Local is default.
+        self.test_env = 'local'
 
 global config
 config = TestConfig()
@@ -211,8 +221,8 @@ class TestOptions:
        #   9300000000,
        #   10)
        # To allow a 10% deviation from 9300000000.
-       self.compiler_stats_range_fields = {}
-       self.stats_range_fields = {}
+       self.compiler_stats_range_fields = {} # REMOVE
+       self.stats_range_fields = {} # REMOVE
 
        # should we run this test alone, i.e. not run it in parallel with
        # any other threads
@@ -284,4 +294,3 @@ default_testopts = TestOptions()
 # (bug, directory, name) of tests marked broken
 global brokens
 brokens = []
-
