@@ -3,8 +3,8 @@ import os
 import platform
 import subprocess
 import shutil
+
 import threading
-from perf_notes import parse_git_notes
 
 def strip_quotes(s):
     # Don't wrap commands to subprocess.call/Popen in quotes.
@@ -63,7 +63,7 @@ class Watcher(object):
     global pool
     global evt
     global sync_lock
-
+    
     def __init__(self, count):
         self.pool = count
         self.evt = threading.Event()
