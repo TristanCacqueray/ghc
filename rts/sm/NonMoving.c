@@ -129,14 +129,15 @@ STG_UNUSED static unsigned int countHeapBlocks(struct NonmovingHeap *heap)
 // Add a segment to the free list.
 void nonmovingPushFreeSegment(struct NonmovingSegment *seg)
 {
-    bdescr *bd = Bdescr((StgPtr) seg);
-
     // See Note [Live data accounting in nonmoving collector].
     if (nonmovingHeap.n_free > NONMOVING_MAX_FREE) {
+        bdescr *bd = Bdescr((StgPtr) seg);
         ACQUIRE_SM_LOCK;
+        ASSERT(oldest_gen->n_blocks >= bd->blocks);
+        ASSERT(oldest_gen->n_words >= BLOCK_SIZE_W * bd->blocks);
         oldest_gen->n_blocks -= bd->blocks;
         oldest_gen->n_words  -= BLOCK_SIZE_W * bd->blocks;
-        freeGroup(Bdescr((StgPtr) seg));
+        freeGroup(bd);
         RELEASE_SM_LOCK;
         return;
     }
