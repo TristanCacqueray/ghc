@@ -75,12 +75,6 @@ alloc_for_copy (uint32_t size, uint32_t gen_no)
 {
     ASSERT(gen_no < RtsFlags.GcFlags.generations);
 
-    if (RtsFlags.GcFlags.useNonmoving && major_gc) {
-        // unconditionally promote to non-moving heap in major gc
-        gct->copied += size;
-        return nonmovingAllocate(gct->cap, size);
-    }
-
     StgPtr to;
     gen_workspace *ws;
 
@@ -104,7 +98,20 @@ alloc_for_copy (uint32_t size, uint32_t gen_no)
         copied3 += size;
         evac3++;
         copied_to[1] += size;
-        return nonmovingAllocate(gct->cap, size);
+        to = nonmovingAllocate(gct->cap, size);
+
+        // Add segment to the todo list unless it's already there
+        // current->todo_link == NULL means not in todo list
+        struct NonmovingSegment *seg = nonmovingGetSegment(to);
+        if (!seg->todo_link) {
+            gen_workspace *ws = &gct->gens[oldest_gen->no];
+            seg->todo_link = ws->todo_seg;
+            ws->todo_seg = seg;
+        }
+
+        if (major_gc)
+            markQueuePushClosureGC(&gct->cap->upd_rem_set.queue, (StgClosure *) to);
+        return to;
     }
 
     evac4++;
@@ -376,6 +383,13 @@ evacuate_large(StgPtr p)
 void
 evacuate_static_object (StgClosure **link_field, StgClosure *q)
 {
+    if (RTS_UNLIKELY(RtsFlags.GcFlags.useNonmoving)) {
+        // See Note [Static objects under the nonmoving collector] in Storage.c.
+        if (major_gc)
+            markQueuePushClosureGC(&gct->cap->upd_rem_set.queue, q);
+        return;
+    }
+
     StgWord link = (StgWord)*link_field;
 
     // See Note [STATIC_LINK fields] for how the link field bits work
@@ -392,6 +406,8 @@ evacuate_static_object (StgClosure **link_field, StgClosure *q)
             gct->static_objects = (StgClosure *)new_list_head;
         }
 #endif
+        if (RtsFlags.GcFlags.useNonmoving && major_gc)
+            markQueuePushClosureGC(&gct->cap->upd_rem_set.queue, (StgClosure *) q);
     }
 }
 
@@ -616,6 +632,8 @@ loop:
           // NOTE: large objects in nonmoving heap are also marked with
           // BF_NONMOVING. Those are moved to scavenged_large_objects list in
           // mark phase.
+          if (major_gc)
+              markQueuePushClosureGC(&gct->cap->upd_rem_set.queue, q);
           return;
       }
 
@@ -642,6 +660,13 @@ loop:
       // they are not)
       if (bd->flags & BF_COMPACT) {
           evacuate_compact((P_)q);
+
+          // We may have evacuated the block to the nonmoving generation. If so
+          // we need to make sure it is added to the mark queue since the only
+          // reference to it may be from the moving heap.
+          if (major_gc && bd->flags & BF_NONMOVING) {
+              markQueuePushClosureGC(&gct->cap->upd_rem_set.queue, q);
+          }
           return;
       }
 
@@ -649,6 +674,13 @@ loop:
        */
       if (bd->flags & BF_LARGE) {
           evacuate_large((P_)q);
+
+          // We may have evacuated the block to the nonmoving generation. If so
+          // we need to make sure it is added to the mark queue since the only
+          // reference to it may be from the moving heap.
+          if (major_gc && bd->flags & BF_NONMOVING) {
+              markQueuePushClosureGC(&gct->cap->upd_rem_set.queue, q);
+          }
           return;
       }
 
@@ -950,6 +982,8 @@ evacuate_BLACKHOLE(StgClosure **p)
     ASSERT((bd->flags & BF_COMPACT) == 0);
 
     if (bd->flags & BF_NONMOVING) {
+        if (major_gc)
+            markQueuePushClosureGC(&gct->cap->upd_rem_set.queue, q);
         return;
     }
 

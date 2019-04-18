@@ -441,7 +441,14 @@ lockCAF (StgRegTable *reg, StgIndStatic *caf)
     caf->saved_info = orig_info;
 
     // Allocate the blackhole indirection closure
-    bh = (StgInd *)allocate(cap, sizeofW(*bh));
+    if (RtsFlags.GcFlags.useNonmoving) {
+        // See Note [Static objects under the nonmoving collector].
+        bh = (StgInd *)nonmovingAllocate(cap, sizeofW(*bh));
+        recordMutableCap((StgClosure*)bh,
+                         regTableToCapability(reg), oldest_gen->no);
+    } else {
+        bh = (StgInd *)allocate(cap, sizeofW(*bh));
+    }
     SET_HDR(bh, &stg_CAF_BLACKHOLE_info, caf->header.prof.ccs);
     bh->indirectee = (StgClosure *)cap->r.rCurrentTSO;
 
@@ -481,7 +488,9 @@ newCAF(StgRegTable *reg, StgIndStatic *caf)
     else
     {
         // Put this CAF on the mutable list for the old generation.
-        if (oldest_gen->no != 0) {
+        // N.B. the nonmoving collector works a bit differently: see
+        // Note [Static objects under the nonmoving collector].
+        if (oldest_gen->no != 0 && !RtsFlags.GcFlags.useNonmoving) {
             recordMutableCap((StgClosure*)caf,
                              regTableToCapability(reg), oldest_gen->no);
         }
@@ -511,6 +520,40 @@ setKeepCAFs (void)
 {
     keepCAFs = 1;
 }
+
+/* Note [Static objects under the nonmoving collector]
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ *
+ * Static object management is a bit tricky under the nonmoving collector as we
+ * need to maintain a bit more state than in the moving collector. In
+ * particular, we need to account for the possibility of concurrent moving and
+ * nonmoving collections. In particular, this leads to four possible states
+ * that a static object might be in:
+ *
+ *  - dead
+ *  - evacuated but not scavenged (e.g. potentially containing references into
+ *    the moving collector's from-space)
+ *  - evacuated and scavenged
+ *
+ *
+ * To avoid this we take care to allocate the 
+ *
+ * The plan is:
+ *
+ *   - lockCAF allocates its blackhole in the nonmoving heap. This is important
+ *     to ensure that we do not need to place the static object on the mut_list
+ *     lest we would need somw way to ensure that it evacuate only once during
+ *     a moving collection.
+ *
+ *   - evacuate_static_object adds merely pushes objects to the mark queue
+ *
+ *   - the nonmoving collector uses the flags in STATIC_LINK as its mark bit.
+ *
+ */
+
+// A list of CAFs linked together via STATIC_LINK where new CAFs are placed
+// until the next GC.
+StgClosure *nonmoving_todo_caf_list;
 
 // An alternate version of newCAF which is used for dynamically loaded
 // object code in GHCi.  In this case we want to retain *all* CAFs in
@@ -558,7 +601,9 @@ StgInd* newGCdCAF (StgRegTable *reg, StgIndStatic *caf)
     if (!bh) return NULL;
 
     // Put this CAF on the mutable list for the old generation.
-    if (oldest_gen->no != 0) {
+    // N.B. the nonmoving collector works a bit differently:
+    // see Note [Static objects under the nonmoving collector].
+    if (oldest_gen->no != 0 && !RtsFlags.GcFlags.useNonmoving) {
         recordMutableCap((StgClosure*)caf,
                          regTableToCapability(reg), oldest_gen->no);
     }

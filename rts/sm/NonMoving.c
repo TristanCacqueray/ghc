@@ -272,15 +272,6 @@ void *nonmovingAllocate(Capability *cap, StgWord sz)
 
     allocations++;
 
-    // Add segment to the todo list unless it's already there
-    // current->todo_link == NULL means not in todo list
-    if (!current->todo_link) {
-        gen_workspace *ws = &gct->gens[oldest_gen->no];
-        current->todo_link = ws->todo_seg;
-        ws->todo_seg = current;
-        pushed_todos++;
-    }
-
     // Advance the current segment's next_free or allocate a new segment if full
     bool full = advance_next_free(current);
     if (full) {
@@ -418,6 +409,11 @@ static void nonmovingClearAllBitmaps(void)
 /* Prepare the heap bitmaps and snapshot metadata for a mark */
 static void nonmovingPrepareMark(void)
 {
+    // See Note [Static objects under the nonmoving collector].
+    prev_static_flag = static_flag;
+    static_flag =
+        static_flag == STATIC_FLAG_A ? STATIC_FLAG_B : STATIC_FLAG_A;
+
     nonmovingClearAllBitmaps();
     nonmovingBumpEpoch();
     for (int alloca_idx = 0; alloca_idx < NONMOVING_ALLOCA_CNT; ++alloca_idx) {
@@ -700,7 +696,7 @@ static void nonmovingMark_(MarkQueue *mark_queue, StgWeak **dead_weaks, StgTSO *
 
 #if defined(DEBUG)
     // Zap CAFs that we will sweep
-    nonmovingGcCafs(mark_queue);
+    nonmovingGcCafs();
 #endif
 
     ASSERT(mark_queue->top->head == 0);
