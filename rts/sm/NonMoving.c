@@ -251,6 +251,7 @@ void nonmovingEvent(void)
 }
 
 /* sz is in words */
+GNUC_ATTR_HOT
 void *nonmovingAllocate(Capability *cap, StgWord sz)
 {
     int allocator_idx = log2_ceil(sz * sizeof(StgWord)) - NONMOVING_ALLOCA0;
