@@ -1217,8 +1217,6 @@ scavenge_mark_stack(void)
             }
         }
     } // while (p = pop_mark_stack())
-
-    debugTrace(1, "ScavMarkStack:%d", count);
 }
 
 /* -----------------------------------------------------------------------------
@@ -1803,7 +1801,6 @@ scavenge_static(void)
 
     ASSERT(gct->failed_to_evac == false);
   }
-  debugTrace(1, "ScavStatic:%d", count);
 }
 
 /* -----------------------------------------------------------------------------
@@ -2127,7 +2124,6 @@ loop:
     }
 #endif
 
-    debugTrace(1, "ScavNon:%d", count);
     // only return when there is no more work to do
 
     return did_anything;

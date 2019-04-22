@@ -114,7 +114,6 @@ bool major_gc;
  */
 static W_ g0_pcnt_kept = 30; // percentage of g0 live at last minor GC
 
-#define MUTLIST_DEBUG
 /* Mut-list stats */
 #if defined(MUTLIST_DEBUG)
 uint32_t mutlist_MUTVARS,
@@ -357,8 +356,7 @@ GarbageCollect (uint32_t collect_gen,
       mark_sp           = NULL;
   }
 
-  nonmovingEvent();
-  nonmovingTraceAllocatorCensus();
+  //nonmovingTraceAllocatorCensus();
 
   /* -----------------------------------------------------------------------
    * follow all the roots that we know about:
@@ -423,18 +421,11 @@ GarbageCollect (uint32_t collect_gen,
   // Remember old stable name addresses.
   rememberOldStableNameAddresses ();
 
-  debugTrace(1, "GC: MarkedRoots");
-  nonmovingEvent();
-  {
-  int count=0;
   for (int g=RtsFlags.GcFlags.generations-1; g >= 0; g--) {
     struct NonmovingSegment *seg  = gct->gens[g].todo_seg;
     while (seg != END_NONMOVING_TODO_LIST) {
       seg = seg->todo_link;
-      count++;
     }
-  }
-  debugTrace(1, "GC:TodoSegs: %d", count)
   }
 
   /* -------------------------------------------------------------------------
@@ -448,8 +439,6 @@ GarbageCollect (uint32_t collect_gen,
   for (;;)
   {
       scavenge_until_all_done();
-      debugTrace(1, "GC: Scav");
-      nonmovingEvent();
 
       // The other threads are now stopped.  We might recurse back to
       // here, but from now on this is the only thread.
@@ -464,8 +453,6 @@ GarbageCollect (uint32_t collect_gen,
       // If we get to here, there's really nothing left to do.
       break;
   }
-  debugTrace(1, "GC: DoneScav");
-  nonmovingEvent();
 
   shutdown_gc_threads(gct->thread_index, idle_cap);
 
@@ -933,7 +920,7 @@ GarbageCollect (uint32_t collect_gen,
 
 #if defined(DEBUG)
   // check for memory leaks if DEBUG is on
-  memInventory(1);
+  //memInventory(1);
 #endif
 
   // ok, GC over: tell the stats department what happened.
@@ -1180,7 +1167,6 @@ loop:
 #else
     scavenge_loop();
 #endif
-    debugTrace(1, "ScavengeLoopDone");
 
     collect_gct_blocks();
 
@@ -1592,7 +1578,6 @@ collect_gct_blocks (void)
     bdescr *bd, *prev;
     int count=0;
 
-    debugTrace(1, "collectGctBlocks:start");
     for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
         ws = &gct->gens[g];
 
@@ -1624,7 +1609,6 @@ collect_gct_blocks (void)
             RELEASE_SPIN_LOCK(&ws->gen->sync);
         }
     }
-    //trace(1, "collectGctBlocks:%d", count);
 }
 
 /* -----------------------------------------------------------------------------
@@ -1815,7 +1799,7 @@ resizeGenerations (void)
             }
         }
 
-#if 1
+#if 0
         trace(1, "n_words: %lu, live_estimate=%lu\n", oldest_gen->n_words, oldest_gen->live_estimate);
         trace(1, "live: %lu, min_alloc: %lu, size : %lu, max = %lu\n", live,
                    min_alloc, size, max);

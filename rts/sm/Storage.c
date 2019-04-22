@@ -1395,8 +1395,16 @@ calcNeeded (bool force_major, memcount *blocks_needed)
         blocks += gen->n_large_blocks 
                 + gen->n_compact_blocks;
 
-        trace(1, "calcNeeded(%d): blocks: %lu, n_blocks: %lu, max_blocks: %lu",
-                   g, blocks, gen->n_blocks, gen->max_blocks);
+#define DEBUG_CALCNEEDED
+#ifdef DEBUG_CALCNEEDED
+        if (TRACE_gc) {
+            trace(1, "calcNeeded(%d): liveest: %lu, n_blocks: %lu", g,
+                gen->live_estimate / BLOCK_SIZE_W, gen->n_blocks);
+            trace(1, "calcNeeded(%d%s): blocks: %lu, max_blocks: %lu, needed: %lu",
+                       g, force_major ? ", force" : "", 
+                       blocks, gen->max_blocks, needed);
+        }
+#endif
 
         // we need at least this much space
         needed += blocks;
@@ -1422,6 +1430,10 @@ calcNeeded (bool force_major, memcount *blocks_needed)
         }
     }
 
+#ifdef DEBUG_CALCNEEDED
+    if (TRACE_gc)
+        trace(1, "calcNeeded: N=%d, needed=%lu", N, needed);
+#endif
     if (blocks_needed != NULL) {
         *blocks_needed = needed;
     }

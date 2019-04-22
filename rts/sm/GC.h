@@ -37,7 +37,7 @@ extern StgPtr mark_sp;
 
 extern bool work_stealing;
 
-#define MUTLIST_DEBUG
+//#define MUTLIST_DEBUG
 #if defined(MUTLIST_DEBUG)
 extern uint32_t mutlist_MUTVARS, mutlist_MUTARRS, mutlist_MVARS, mutlist_OTHERS,
     mutlist_TVAR,
