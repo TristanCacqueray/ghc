@@ -64,6 +64,11 @@ STATIC_INLINE void evacuate_large(StgPtr p);
    Allocate some space in which to copy an object.
    -------------------------------------------------------------------------- */
 
+extern W_ copied2;
+extern W_ copied3;
+extern W_ evac1, evac2, evac3, evac4;
+extern W_ copied_to[2];
+
 /* size is in words */
 STATIC_INLINE StgPtr
 alloc_for_copy (uint32_t size, uint32_t gen_no)
@@ -87,16 +92,23 @@ alloc_for_copy (uint32_t size, uint32_t gen_no)
     if (gen_no < gct->evac_gen_no) {
         if (gct->eager_promotion) {
             gen_no = gct->evac_gen_no;
+            evac1++;
         } else {
             gct->failed_to_evac = true;
+            evac2++;
         }
     }
 
     if (RtsFlags.GcFlags.useNonmoving && gen_no == oldest_gen->no) {
         gct->copied += size;
+        copied3 += size;
+        evac3++;
+        copied_to[1] += size;
         return nonmovingAllocate(gct->cap, size);
     }
 
+    evac4++;
+    copied_to[gen_no] += size;
     ws = &gct->gens[gen_no];  // zero memory references here
 
     /* chain a new block onto the to-space for the destination gen if

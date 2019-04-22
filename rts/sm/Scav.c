@@ -414,6 +414,8 @@ scavenge_fun_srt(const StgInfoTable *info)
    scavenging a mutable object where eager promotion isn't such a good
    idea.
    -------------------------------------------------------------------------- */
+ 
+extern W_ copied4;
 
 static GNUC_ATTR_HOT void
 scavenge_block (bdescr *bd)
@@ -830,6 +832,7 @@ scavenge_block (bdescr *bd)
 
   if (p > bd->free)  {
       gct->copied += ws->todo_free - bd->free;
+      copied4 += ws->todo_free - bd->free;
       bd->free = p;
   }
 

@@ -197,6 +197,8 @@ push_scanned_block (bdescr *bd, gen_workspace *ws)
     - push_scanned_block doesn't put these blocks on the part_list
 */
 
+W_ copied1 = 0;
+
 StgPtr
 todo_block_full (uint32_t size, gen_workspace *ws)
 {
@@ -250,6 +252,7 @@ todo_block_full (uint32_t size, gen_workspace *ws)
     }
 
     gct->copied += ws->todo_free - bd->free;
+    copied1 += ws->todo_free - bd->free;
     bd->free = ws->todo_free;
 
     ASSERT(bd->u.scan >= bd->start && bd->u.scan <= bd->free);

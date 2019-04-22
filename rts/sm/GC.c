@@ -195,6 +195,16 @@ void nonmovingEvent(void);
    Locks held: all capabilities are held throughout GarbageCollect().
    -------------------------------------------------------------------------- */
 
+W_ evac1 = 0;
+W_ evac2 = 0;
+W_ evac3 = 0;
+W_ evac4 = 0;
+W_ copied2= 0;
+W_ copied3= 0;
+W_ copied4= 0;
+W_ copied_to[2] = {};
+W_ gc_num = 0;
+
 void
 GarbageCollect (uint32_t collect_gen,
                 bool do_heap_census,
@@ -211,6 +221,9 @@ GarbageCollect (uint32_t collect_gen,
   gc_thread *saved_gct;
 #endif
   uint32_t g, n;
+
+  copied_to[0] = 0;
+  copied_to[1] = 0;
 
   // necessary if we stole a callee-saves register for gct:
 #if defined(THREADED_RTS)
@@ -929,6 +942,12 @@ GarbageCollect (uint32_t collect_gen,
              N, n_gc_threads, par_max_copied, par_balanced_copied,
              gc_spin_spin, gc_spin_yield, mut_spin_spin, mut_spin_yield,
              any_work, no_work, scav_find_work);
+
+#if 0
+  for (int i=0; i<2; i++)
+      trace(1, "GC%d(%d): Copied to %d: %lu", gc_num, collect_gen, i, copied_to[i]);
+#endif
+  gc_num ++;
 
 #if defined(RTS_USER_SIGNALS)
   if (RtsFlags.MiscFlags.install_signal_handlers) {
