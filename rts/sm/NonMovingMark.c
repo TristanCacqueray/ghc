@@ -1324,9 +1324,16 @@ mark_closure (MarkQueue *queue, const StgClosure *p0, StgClosure **origin)
         }
     }
 
-    case BLACKHOLE:
+    case BLACKHOLE: {
         PUSH_FIELD((StgInd *) p, indirectee);
-        break;
+        StgClosure *indirectee = ((StgInd*)p)->indirectee;
+        if (GET_CLOSURE_TAG(indirectee) == 0 || origin == NULL) {
+            break;
+        } else {
+            p = indirectee;
+            goto try_again;
+        }
+    }
 
     case MUT_VAR_CLEAN:
     case MUT_VAR_DIRTY:
@@ -1482,7 +1489,7 @@ mark_closure (MarkQueue *queue, const StgClosure *p0, StgClosure **origin)
 
 done:
     if (origin != NULL) {
-        if (UNTAG_CLOSURE(p0) != p) {
+        if (UNTAG_CLOSURE((StgClosure*)p0) != p) {
             if (cas((StgVolatilePtr)origin, (StgWord)p0, (StgWord)TAG_CLOSURE(tag, p)) == (StgWord)p0) {
                 // debugBelch("cas successful");
             }
