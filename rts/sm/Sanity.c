@@ -467,7 +467,13 @@ void checkHeapChain (bdescr *bd)
     StgPtr p;
 
     for (; bd != NULL; bd = bd->link) {
-        if(!(bd->flags & BF_SWEPT)) {
+        if (false && bd->flags & BF_NONMOVING) {
+            struct NonmovingSegment *seg = (struct NonmovingSegment *) bd->start;
+            for (nonmoving_block_idx i=0; i < nonmovingSegmentBlockCount(seg); i++) {
+                if (nonmovingGetMark(seg, i) == nonmovingMarkEpoch) 
+                    checkClosure((StgClosure *) nonmovingSegmentGetBlock(seg, i));
+            }
+        } else if(!(bd->flags & BF_SWEPT)) {
             p = bd->start;
             while (p < bd->free) {
                 uint32_t size = checkClosure((StgClosure *)p);
@@ -482,6 +488,41 @@ void checkHeapChain (bdescr *bd)
         }
     }
 }
+
+/* -----------------------------------------------------------------------------
+ * Check nonmoving heap sanity
+ *
+ * After a concurrent sweep the nonmoving heap can be checked for validity.
+ * -------------------------------------------------------------------------- */
+
+static void checkNonmovingSegments (struct NonmovingSegment *seg)
+{
+    while (seg != NULL) {
+        const nonmoving_block_idx count = nonmovingSegmentBlockCount(seg);
+        for (nonmoving_block_idx i=0; i < count; i++) {
+            if (seg->bitmap[i] == nonmovingMarkEpoch) {
+                StgPtr p = nonmovingSegmentGetBlock(seg, i);
+                checkClosure((StgClosure *) p);
+            } else if (i < seg->next_free_snap){
+                seg->bitmap[i] = 0;
+            }
+        }
+        seg = seg->link;
+    }
+}
+
+void checkNonmovingHeap (const struct NonmovingHeap *heap)
+{
+    for (unsigned int i=0; i < NONMOVING_ALLOCA_CNT; i++) {
+        const struct NonmovingAllocator *alloc = heap->allocators[i];
+        checkNonmovingSegments(alloc->filled);
+        checkNonmovingSegments(alloc->active);
+        for (unsigned int cap=0; cap < n_capabilities; cap++) {
+            checkNonmovingSegments(alloc->current[cap]);
+        }
+    }
+}
+
 
 void
 checkHeapChunk(StgPtr start, StgPtr end)

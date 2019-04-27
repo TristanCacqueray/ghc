@@ -23,6 +23,7 @@
 void checkSanity        ( bool after_gc, bool major_gc );
 void checkNurserySanity ( nursery *nursery );
 void checkHeapChain     ( bdescr *bd );
+void checkNonmovingHeap ( const struct NonmovingHeap *heap );
 void checkHeapChunk     ( StgPtr start, StgPtr end );
 void checkLargeObjects  ( bdescr *bd );
 void checkTSO           ( StgTSO* tso );
