@@ -71,7 +71,7 @@ nonmovingScavengeOne(StgClosure *q)
 
     case FUN_1_0:
         scavenge_fun_srt(info);
-        /* fallthrough */
+        FALLTHROUGH;
     case CONSTR_1_0:
         evacuate(&((StgClosure *)p)->payload[0]);
         break;
@@ -82,7 +82,7 @@ nonmovingScavengeOne(StgClosure *q)
 
     case FUN_0_1:
         scavenge_fun_srt(info);
-        /* fallthrough */
+        FALLTHROUGH;
     case CONSTR_0_1:
         break;
 
@@ -92,7 +92,7 @@ nonmovingScavengeOne(StgClosure *q)
 
     case FUN_0_2:
         scavenge_fun_srt(info);
-        /* fallthrough */
+        FALLTHROUGH;
     case CONSTR_0_2:
         break;
 
@@ -103,7 +103,7 @@ nonmovingScavengeOne(StgClosure *q)
 
     case FUN_1_1:
         scavenge_fun_srt(info);
-        /* fallthrough */
+        FALLTHROUGH;
     case CONSTR_1_1:
         evacuate(&q->payload[0]);
         break;
