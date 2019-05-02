@@ -1042,6 +1042,7 @@ mark_closure (MarkQueue *queue, const StgClosure *p0, StgClosure **origin)
 
  try_again:
     ;
+    StgClosure *p_next = NULL;
     StgWord tag = GET_CLOSURE_TAG(p);
     p = UNTAG_CLOSURE(p);
 
@@ -1111,7 +1112,7 @@ mark_closure (MarkQueue *queue, const StgClosure *p0, StgClosure **origin)
         }
     }
 
-    bdescr *bd = Bdescr((StgPtr) p);
+    bdescr *const bd = Bdescr((StgPtr) p);
 
     if (bd->gen != oldest_gen) {
         // Here we have an object living outside of the non-moving heap. While
@@ -1317,22 +1318,20 @@ mark_closure (MarkQueue *queue, const StgClosure *p0, StgClosure **origin)
     case IND: {
         PUSH_FIELD((StgInd *) p, indirectee);
         if (origin != NULL) {
-            p = ((StgInd*)p)->indirectee;
-            goto try_again;
-        } else {
-            break;
+            p_next = ((StgInd*)p)->indirectee;
         }
+        break;
     }
 
     case BLACKHOLE: {
         PUSH_FIELD((StgInd *) p, indirectee);
         StgClosure *indirectee = ((StgInd*)p)->indirectee;
         if (GET_CLOSURE_TAG(indirectee) == 0 || origin == NULL) {
-            break;
+            // do nothing
         } else {
-            p = indirectee;
-            goto try_again;
+            p_next = indirectee;
         }
+        break;
     }
 
     case MUT_VAR_CLEAN:
@@ -1479,7 +1478,7 @@ mark_closure (MarkQueue *queue, const StgClosure *p0, StgClosure **origin)
             bd->flags |= BF_MARKED;
         }
         RELEASE_LOCK(&nonmoving_large_objects_mutex);
-    } else {
+    } else if (bd->flags & BF_NONMOVING) {
         // TODO: Kill repetition
         struct NonmovingSegment *seg = nonmovingGetSegment((StgPtr) p);
         nonmoving_block_idx block_idx = nonmovingGetBlockIdx((StgPtr) p);
@@ -1487,11 +1486,16 @@ mark_closure (MarkQueue *queue, const StgClosure *p0, StgClosure **origin)
         nonmoving_live_words += nonmovingSegmentBlockSize(seg) / sizeof(W_);
     }
 
+    // If we found a indirection to shortcut keep going.
+    if (p_next) {
+        p = p_next;
+        goto try_again;
+    }
+
 done:
-    if (origin != NULL) {
-        if (UNTAG_CLOSURE((StgClosure*)p0) != p) {
+    if (origin != NULL && (!HEAP_ALLOCED(p) || bd->flags & BF_NONMOVING)) {
+        if (UNTAG_CLOSURE((StgClosure*)p0) != p && *origin == p0) {
             if (cas((StgVolatilePtr)origin, (StgWord)p0, (StgWord)TAG_CLOSURE(tag, p)) == (StgWord)p0) {
-                // debugBelch("cas successful");
             }
         }
     }
