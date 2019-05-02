@@ -242,16 +242,6 @@ static struct NonmovingSegment *pop_active_segment(struct NonmovingAllocator *al
     }
 }
 
-static uint64_t pushed_todos=0, allocations=0;
-
-void nonmovingEvent(void);
-void nonmovingEvent(void)
-{
-  debugTrace(1, "Nonmoving: pushed_todos=%ld, allocations=%ld", pushed_todos, allocations);
-  pushed_todos=0;
-  allocations=0;
-}
-
 /* sz is in words */
 GNUC_ATTR_HOT
 void *nonmovingAllocate(Capability *cap, StgWord sz)
@@ -270,8 +260,6 @@ void *nonmovingAllocate(Capability *cap, StgWord sz)
     void *ret = nonmovingSegmentGetBlock(current, current->next_free);
     ASSERT(GET_CLOSURE_TAG(ret) == 0); // check alignment
 
-    allocations++;
-
     // Advance the current segment's next_free or allocate a new segment if full
     bool full = advance_next_free(current);
     if (full) {
@@ -288,7 +276,7 @@ void *nonmovingAllocate(Capability *cap, StgWord sz)
         // threads concurrently, and in the case where we need to allocate a
         // segment we'll need to modify the free segment list.
         nonmovingPushFilledSegment(current);
-        
+
         // first look for a new segment in the active list
         struct NonmovingSegment *new_current = pop_active_segment(alloca);
 

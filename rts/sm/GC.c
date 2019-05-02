@@ -184,8 +184,6 @@ bdescr *mark_stack_top_bd; // topmost block in the mark stack
 bdescr *mark_stack_bd;     // current block in the mark stack
 StgPtr mark_sp;            // pointer to the next unallocated mark stack entry
 
-void nonmovingEvent(void);
-
 /* -----------------------------------------------------------------------------
    GarbageCollect: the main entry point to the garbage collector.
 
