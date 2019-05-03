@@ -488,7 +488,7 @@ bool check_in_nonmoving_heap(StgClosure *p) {
 /* Push the free variables of a (now-evaluated) thunk to the
  * update remembered set.
  */
-void updateRemembSetPushThunk(Capability *cap, StgThunk *thunk)
+inline void updateRemembSetPushThunk(Capability *cap, StgThunk *thunk)
 {
     const StgInfoTable *info;
     do {
@@ -549,7 +549,7 @@ void updateRemembSetPushThunk_(StgRegTable *reg, StgThunk *p)
     updateRemembSetPushThunk(regTableToCapability(reg), p);
 }
 
-void updateRemembSetPushClosure(Capability *cap, StgClosure *p)
+inline void updateRemembSetPushClosure(Capability *cap, StgClosure *p)
 {
     if (!check_in_nonmoving_heap(p)) return;
     MarkQueue *queue = &cap->upd_rem_set.queue;
