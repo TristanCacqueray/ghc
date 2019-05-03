@@ -37,6 +37,9 @@ void      stat_endGC  (Capability *cap, struct gc_thread_ *_gct, W_ live,
                        W_ mut_spin_yield, W_ any_work, W_ no_work,
                        W_ scav_find_work);
 
+void      stat_startNonmovingGcSync(void);
+void      stat_endNonmovingGcSync(void);
+
 #if defined(PROFILING)
 void      stat_startRP(void);
 void      stat_endRP(uint32_t,

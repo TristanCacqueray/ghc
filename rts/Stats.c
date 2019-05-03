@@ -33,7 +33,8 @@ static Time
     end_init_cpu,   end_init_elapsed,
     start_exit_cpu, start_exit_elapsed,
     start_exit_gc_elapsed, start_exit_gc_cpu,
-    end_exit_cpu,   end_exit_elapsed;
+    end_exit_cpu,   end_exit_elapsed,
+    start_nonmoving_gc_sync_cpu, start_nonmoving_gc_sync_elapsed;
 
 #if defined(PROFILING)
 static Time RP_start_time  = 0, RP_tot_time  = 0;  // retainer prof user time
@@ -189,7 +190,10 @@ initStats0(void)
             .par_balanced_copied_bytes = 0,
             .sync_elapsed_ns = 0,
             .cpu_ns = 0,
-            .elapsed_ns = 0
+            .elapsed_ns = 0,
+            .nonmoving_gc_sync_cpu_ns = 0,
+            .nonmoving_gc_sync_elapsed_ns = 0,
+            .nonmoving_gc_sync_max_elapsed_ns = 0,
         }
     };
 }
@@ -284,6 +288,26 @@ void
 stat_startGCSync (gc_thread *gct)
 {
     gct->gc_sync_start_elapsed = getProcessElapsedTime();
+}
+
+
+void
+stat_startNonmovingGcSync ()
+{
+    getProcessTimes(&start_nonmoving_gc_sync_cpu, &start_nonmoving_gc_sync_elapsed);
+    traceConcSyncBegin();
+}
+
+void
+stat_endNonmovingGcSync ()
+{
+    Time end_cpu, end_elapsed;
+    getProcessTimes(&end_cpu, &end_elapsed);
+    stats.gc.nonmoving_gc_sync_cpu_ns += end_cpu - start_nonmoving_gc_sync_cpu;
+    stats.gc.nonmoving_gc_sync_elapsed_ns += end_elapsed - start_nonmoving_gc_sync_elapsed;
+    stats.gc.nonmoving_gc_sync_max_elapsed_ns =
+      stg_max(end_elapsed - start_nonmoving_gc_sync_elapsed, stats.gc.nonmoving_gc_sync_max_elapsed_ns);
+    traceConcSyncEnd();
 }
 
 /* -----------------------------------------------------------------------------
@@ -712,6 +736,16 @@ static void report_summary(const RTSSummaryStats* sum)
                     TimeToSecondsDbl(gen_stats->elapsed_ns),
                     TimeToSecondsDbl(gen_stats->avg_pause_ns),
                     TimeToSecondsDbl(gen_stats->max_pause_ns));
+    }
+    if (RtsFlags.GcFlags.useNonmoving) {
+        const int n_major_colls = sum->gc_summary_stats[RtsFlags.GcFlags.generations-1].collections;
+        statsPrintf("  Gen  1     %5d syncs"
+                    ",             %6.3fs  %6.3fs     %3.4fs     %3.4fs\n",
+                    n_major_colls,
+                    TimeToSecondsDbl(stats.gc.nonmoving_gc_sync_cpu_ns),
+                    TimeToSecondsDbl(stats.gc.nonmoving_gc_sync_elapsed_ns),
+                    TimeToSecondsDbl(stats.gc.nonmoving_gc_sync_elapsed_ns) / n_major_colls,
+                    TimeToSecondsDbl(stats.gc.nonmoving_gc_sync_max_elapsed_ns));
     }
 
     statsPrintf("\n");
