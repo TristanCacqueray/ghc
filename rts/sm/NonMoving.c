@@ -246,7 +246,7 @@ static struct NonmovingSegment *pop_active_segment(struct NonmovingAllocator *al
 GNUC_ATTR_HOT
 void *nonmovingAllocate(Capability *cap, StgWord sz)
 {
-    int allocator_idx = log2_ceil(sz * sizeof(StgWord)) - NONMOVING_ALLOCA0;
+    unsigned int allocator_idx = log2_ceil(sz * sizeof(StgWord)) - NONMOVING_ALLOCA0;
 
     // The max we ever allocate is 3276 bytes (anything larger is a large
     // object and not moved) which is covered by allocator 9.

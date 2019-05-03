@@ -31,7 +31,7 @@ void nonmovingPrepareSweep()
     ASSERT(nonmovingHeap.sweep_list == NULL);
 
     // Move blocks in the allocators' filled lists into sweep_list
-    for (int alloc_idx = 0; alloc_idx < NONMOVING_ALLOCA_CNT; alloc_idx++)
+    for (unsigned int alloc_idx = 0; alloc_idx < NONMOVING_ALLOCA_CNT; alloc_idx++)
     {
         struct NonmovingAllocator *alloc = nonmovingHeap.allocators[alloc_idx];
         struct NonmovingSegment *filled = pop_all_filled_segments(alloc);

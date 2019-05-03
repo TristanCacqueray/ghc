@@ -724,7 +724,7 @@ again:
 
 #if MARK_PREFETCH_QUEUE_DEPTH > 0
     // Avoid a branch by clamping index to 0
-    int prefetch_idx = top->head > MARK_PREFETCH_QUEUE_DEPTH ? top->head - MARK_PREFETCH_QUEUE_DEPTH : 0;
+    uint32_t prefetch_idx = top->head > MARK_PREFETCH_QUEUE_DEPTH ? top->head - MARK_PREFETCH_QUEUE_DEPTH : 0;
     MarkQueueEnt *prefetch_ptr = &top->entries[prefetch_idx];
     // The entry may not be a MARK_CLOSURE but it doesn't matter, our
     // MarkQueueEnt encoding always places the pointer to the object to be
