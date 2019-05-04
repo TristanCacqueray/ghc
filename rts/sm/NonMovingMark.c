@@ -720,8 +720,8 @@ again:
         }
     }
 
-    q->top->head--;
-    MarkQueueEnt ent = q->top->entries[q->top->head];
+    top->head--;
+    MarkQueueEnt ent = top->entries[top->head];
 
 #if MARK_PREFETCH_QUEUE_DEPTH > 0
     // Avoid a branch by clamping index to 0
