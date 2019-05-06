@@ -171,6 +171,8 @@ static struct NonmovingSegment *nonmovingPopFreeSegment(void)
  * Request a fresh segment from the free segment list or allocate one of the
  * given node.
  *
+ * Caller must hold SM_MUTEX (although we take the gc_alloc_block_sync spinlock
+ * under the assumption that we are in a GC context).
  */
 static struct NonmovingSegment *nonmovingAllocSegment(uint32_t node)
 {
@@ -242,7 +244,7 @@ static struct NonmovingSegment *pop_active_segment(struct NonmovingAllocator *al
     }
 }
 
-/* sz is in words */
+/* Allocate a block in the nonmoving heap. Caller must hold SM_MUTEX. sz is in words */
 GNUC_ATTR_HOT
 void *nonmovingAllocate(Capability *cap, StgWord sz)
 {
