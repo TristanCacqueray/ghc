@@ -13,16 +13,14 @@
 #include "NonMovingMark.h"
 #include "NonMovingShortcut.h"
 
-#define MAX_CHAIN_LENGTH 1024
-
-static StgSelector *selector_chain[MAX_CHAIN_LENGTH];
-static uint32_t selector_chain_len;
+static StgSelector *SELECTOR_CHAIN[1000];
+static int selector_chain_len;
 
 // p should be locked
 static void push_selector_thunk(StgSelector *p)
 {
-    ASSERT(selector_chain_len < MAX_CHAIN_LENGTH);
-    selector_chain[selector_chain_len++] = p;
+    ASSERT(selector_chain_len < 1000);
+    SELECTOR_CHAIN[selector_chain_len++] = p;
 }
 
 static StgSelector *pop_selector_thunk(void)
@@ -30,7 +28,7 @@ static StgSelector *pop_selector_thunk(void)
     if (selector_chain_len == 0) {
         return NULL;
     }
-    return selector_chain[selector_chain_len--];
+    return SELECTOR_CHAIN[selector_chain_len--];
 }
 
 
@@ -57,10 +55,6 @@ print_selector_chain(void)
 void
 nonmoving_eval_thunk_selector(MarkQueue *queue, StgSelector *p, StgClosure **origin)
 {
-    // We need this to check that the origin pointer has not been mutated when
-    // we CAS it.
-    const StgSelector *const p0 = p;
-
     // Idea: `origin` will be updated with the value of this selector. When
     // looking for the value if the selectee is also a selector thunk we
     // recurse.
@@ -226,7 +220,7 @@ bale_out:
         // debugBelch("Updating selector chain\n");
         nonmoving_unchain_thunk_selectors(val);
         if (origin) {
-            cas(origin, p0, val);
+            *origin = val; // TODO: this should be a cas()
         }
     } else {
         // debugBelch("val is NULL -- skipping selector chain\n");
