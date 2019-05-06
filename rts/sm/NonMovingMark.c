@@ -325,9 +325,8 @@ void nonmovingFinishFlush(Task *task)
         reset_upd_rem_set(&capabilities[i]->upd_rem_set);
     }
     // Also reset upd_rem_set_block_list in case some of the UpdRemSets were
-    // filled and we flushed them
-    // (no need for locking here as all capabilities are held)
-    freeChain(upd_rem_set_block_list);
+    // filled and we flushed them.
+    freeChain_lock(upd_rem_set_block_list);
     upd_rem_set_block_list = NULL;
 
     debugTrace(DEBUG_nonmoving_gc, "Finished update remembered set flush...");
