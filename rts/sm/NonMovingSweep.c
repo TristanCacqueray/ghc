@@ -158,6 +158,7 @@ clear_segment_free_blocks(struct NonmovingSegment* seg)
 
 GNUC_ATTR_HOT void nonmovingSweep(void)
 {
+    int n_freed=0, n_active=0, n_filled=0;
     while (nonmovingHeap.sweep_list) {
         struct NonmovingSegment *seg = nonmovingHeap.sweep_list;
 
@@ -171,18 +172,24 @@ GNUC_ATTR_HOT void nonmovingSweep(void)
         case SEGMENT_FREE:
             IF_DEBUG(sanity, clear_segment(seg));
             nonmovingPushFreeSegment(seg);
+            n_freed++;
             break;
         case SEGMENT_PARTIAL:
             IF_DEBUG(sanity, clear_segment_free_blocks(seg));
             nonmovingPushActiveSegment(seg);
+            n_active++;
             break;
         case SEGMENT_FILLED:
             nonmovingPushFilledSegment(seg);
+            n_filled++;
             break;
         default:
             barf("nonmovingSweep: weird sweep return: %d\n", ret);
         }
     }
+
+    debugTrace(DEBUG_nonmoving_gc, "Pushed %d free, %d active, %d filled segments\n",
+               n_freed, n_active, n_filled);
 }
 
 /* N.B. This happens during the pause so we own all capabilities. */
