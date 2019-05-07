@@ -39,12 +39,30 @@ void nonmovingPrepareSweep()
         // Link filled to sweep_list
         if (filled) {
             struct NonmovingSegment *filled_head = filled;
+            int i=0;
             // Find end of filled list
             while (filled->link) {
                 filled = filled->link;
+                i++;
             }
             filled->link = nonmovingHeap.sweep_list;
             nonmovingHeap.sweep_list = filled_head;
+            debugBelch("alloc%d: prepared %d filled segments\n", alloc_idx, i);
+        }
+
+        if (alloc->active) {
+            int i=0;
+            struct NonmovingSegment *active = alloc->active;
+            while (active->link) {
+                i++;
+                active = active->link;
+            }
+            debugBelch("alloc%d: prepared %d active segments\n", alloc_idx, i);
+#if !defined(THREADED_RTS)
+            active->link = nonmovingHeap.sweep_list;
+            nonmovingHeap.sweep_list = alloc->active;
+            alloc->active = NULL;
+#endif
         }
     }
 }
