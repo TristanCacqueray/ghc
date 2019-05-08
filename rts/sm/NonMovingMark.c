@@ -185,6 +185,70 @@ static uint32_t markQueueLength(MarkQueue *q);
 #endif
 static void init_mark_queue_(MarkQueue *queue);
 
+//#define MARK_DUMP
+#if defined(MARK_DUMP)
+static StgClosure *current_src = NULL;
+static int mark_n = 0;
+static FILE *mark_dump = NULL;
+
+static void 
+mark_dump_start(void)
+{
+    if (mark_dump) {
+        fprintf(mark_dump, "}\n");
+        fclose(mark_dump);
+    }
+
+    char fname[255];
+    snprintf(fname, 255, "dumps/%05d.dot", mark_n);
+    mark_dump = fopen(fname, "w");
+    ASSERT(mark_dump != NULL);
+    fprintf(mark_dump, "digraph {\n");
+
+    debugBelch("mark dump: Starting mark %d\n", mark_n);
+    trace(DEBUG_nonmoving_gc, "mark dump: Starting mark %d\n", mark_n);
+    mark_n++;
+}
+
+static void
+mark_dump_node(StgClosure *c)
+{
+    current_src = c;
+    if (!mark_dump)
+        return;
+
+    const StgInfoTable *info = get_itbl(c);
+    const char *type;
+    switch ( info->type ) {
+    case CONSTR:
+    case CONSTR_1_0: case CONSTR_0_1:
+    case CONSTR_1_1: case CONSTR_0_2: case CONSTR_2_0:
+    case CONSTR_NOCAF:
+    {
+        const StgConInfoTable *con_info = get_con_itbl (c);
+        type = GET_CON_DESC(con_info);
+        break;
+    }
+    default:
+        type = closure_type_names[info->type];
+    }
+
+    fprintf(mark_dump, "  \"%p\" [\"label\"=\"%p\\n%s\"];\n", UNTAG_CLOSURE(c), UNTAG_CLOSURE(c), type);
+}
+
+static void
+mark_dump_edge(StgClosure *tgt)
+{
+    if (!mark_dump)
+        return;
+    fprintf(mark_dump, "  \"%p\" -> \"%p\";\n", UNTAG_CLOSURE(current_src), UNTAG_CLOSURE(tgt));
+}
+#else
+static void mark_dump_start(void) {}
+static void mark_dump_node(StgClosure *c) {}
+static void mark_dump_edge(StgClosure *tgt) {}
+#endif
+
 /* Transfers the given capability's update-remembered set to the global
  * remembered set.
  *
@@ -414,6 +478,7 @@ void push_closure (MarkQueue *q,
     // with a mark_array entry
     ASSERT(((uintptr_t) origin & 0x3) == 0);
 
+    mark_dump_edge(p);
     MarkQueueEnt ent = {
         .mark_closure = {
             .p = p,
@@ -432,6 +497,7 @@ void push_array (MarkQueue *q,
     if (HEAP_ALLOCED_GC(array) && (Bdescr((StgPtr) array)->gen != oldest_gen))
         return;
 
+    mark_dump_edge((StgClosure *) array);
     MarkQueueEnt ent = {
         .mark_array = {
             .array = array,
@@ -1048,10 +1114,12 @@ mark_closure (MarkQueue *queue, const StgClosure *p0, StgClosure **origin)
     StgWord tag = GET_CLOSURE_TAG(p);
     p = UNTAG_CLOSURE(p);
 
+    mark_dump_node(p);
+
 #   define PUSH_FIELD(obj, field)                                \
         markQueuePushClosure(queue,                              \
                                 (StgClosure *) (obj)->field,     \
-                                (StgClosure **) &(obj)->field)
+                                (StgClosure **) &(obj)->field);
 
     if (!HEAP_ALLOCED_GC(p)) {
         const StgInfoTable *info = get_itbl(p);
@@ -1514,6 +1582,7 @@ done:
 GNUC_ATTR_HOT void
 nonmovingMark (MarkQueue *queue)
 {
+    mark_dump_start();
     traceConcMarkBegin();
     debugTrace(DEBUG_nonmoving_gc, "Starting mark pass");
     unsigned int count = 0;
