@@ -406,8 +406,6 @@ evacuate_static_object (StgClosure **link_field, StgClosure *q)
             gct->static_objects = (StgClosure *)new_list_head;
         }
 #endif
-        if (RtsFlags.GcFlags.useNonmoving && major_gc)
-            markQueuePushClosureGC(&gct->cap->upd_rem_set.queue, (StgClosure *) q);
     }
 }
 
