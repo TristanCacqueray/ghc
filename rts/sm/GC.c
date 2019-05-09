@@ -15,6 +15,7 @@
 #include "Rts.h"
 #include "HsFFI.h"
 
+#include "TraceDump.h"
 #include "GC.h"
 #include "GCThread.h"
 #include "GCTDecl.h"            // NB. before RtsSignals.h which
@@ -276,6 +277,8 @@ GarbageCollect (uint32_t collect_gen,
    */
   N = collect_gen;
   major_gc = (N == RtsFlags.GcFlags.generations-1);
+  if (major_gc)
+      trace_dump_start_gc();
 
   /* N.B. The nonmoving collector works a bit differently. See
    * Note [Static objects under the nonmoving collector].
@@ -953,6 +956,8 @@ GarbageCollect (uint32_t collect_gen,
     unblockUserSignals();
   }
 #endif
+
+  trace_dump_end_gc();
 
   RELEASE_SM_LOCK;
 
