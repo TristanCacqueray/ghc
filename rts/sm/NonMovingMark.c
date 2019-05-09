@@ -186,8 +186,16 @@ static uint32_t markQueueLength(MarkQueue *q);
 static void init_mark_queue_(MarkQueue *queue);
 
 //#define MARK_DUMP
+static enum MarkQueueEntSource mark_queue_ent_source;
+static void
+set_mark_queue_ent_source(enum MarkQueueEntSource source)
+{
+    mark_queue_ent_source = source;
+}
+
 #if defined(MARK_DUMP)
 static StgClosure *current_src = NULL;
+static enum MarkQueueEntSource popped_source = MARK_QUEUE_OTHER;
 static int mark_n = 0;
 static FILE *mark_dump = NULL;
 
@@ -202,7 +210,7 @@ mark_dump_start(void)
     char fname[255];
     snprintf(fname, 255, "dumps/%05d.dot", mark_n);
     mark_dump = fopen(fname, "w");
-    ASSERT(mark_dump != NULL);
+    if (mark_dump == NULL) abort();
     fprintf(mark_dump, "digraph {\n");
 
     debugBelch("mark dump: Starting mark %d\n", mark_n);
@@ -233,7 +241,25 @@ mark_dump_node(StgClosure *c)
         type = closure_type_names[info->type];
     }
 
-    fprintf(mark_dump, "  \"%p\" [\"label\"=\"%p\\n%s\"];\n", UNTAG_CLOSURE(c), UNTAG_CLOSURE(c), type);
+    char *source;
+    switch (popped_source) {
+    case MARK_QUEUE_ROOT:
+        source = "root";
+        break;
+    case MARK_QUEUE_EVACD:
+        source = "evacd";
+        break;
+    case MARK_QUEUE_UPD_REM_SET:
+        source = "upd_rem_set";
+        break;
+    case MARK_QUEUE_OTHER:
+        source = "other";
+        break;
+    default:
+        abort();
+    }
+    fprintf(mark_dump, "  \"%p\" [label=\"%p\\n%s\" source=\"%s\" info=\"%p\" type=\"%s\"];\n", 
+            UNTAG_CLOSURE(c), UNTAG_CLOSURE(c), type, source, info, type);
 }
 
 static void
@@ -448,6 +474,7 @@ void markQueuePushClosureGC (MarkQueue *q, StgClosure *p)
     }
 
     MarkQueueEnt ent = {
+        .source = MARK_QUEUE_EVACD,
         .mark_closure = {
             .p = UNTAG_CLOSURE(p),
             .origin = NULL,
@@ -480,6 +507,7 @@ void push_closure (MarkQueue *q,
 
     mark_dump_edge(p);
     MarkQueueEnt ent = {
+        .source = mark_queue_ent_source,
         .mark_closure = {
             .p = p,
             .origin = origin,
@@ -499,6 +527,7 @@ void push_array (MarkQueue *q,
 
     mark_dump_edge((StgClosure *) array);
     MarkQueueEnt ent = {
+        .source = mark_queue_ent_source,
         .mark_array = {
             .array = array,
             .start_index = (start_index << 16) | 0x3,
@@ -559,6 +588,7 @@ inline void updateRemembSetPushThunk(Capability *cap, StgThunk *thunk)
     do {
         info = get_volatile_itbl((StgClosure *) thunk);
     } while (info->type == WHITEHOLE);
+    set_mark_queue_ent_source(MARK_QUEUE_UPD_REM_SET);
     updateRemembSetPushThunkEager(cap, (StgThunkInfoTable *) info, thunk);
 }
 
@@ -567,6 +597,7 @@ void updateRemembSetPushThunkEager(Capability *cap,
                                    StgThunk *thunk)
 {
     /* N.B. info->i.type mustn't be WHITEHOLE */
+    set_mark_queue_ent_source(MARK_QUEUE_UPD_REM_SET);
     switch (info->i.type) {
     case THUNK:
     case THUNK_1_0:
@@ -609,6 +640,7 @@ void updateRemembSetPushThunkEager(Capability *cap,
 
 void updateRemembSetPushThunk_(StgRegTable *reg, StgThunk *p)
 {
+    set_mark_queue_ent_source(MARK_QUEUE_UPD_REM_SET);
     updateRemembSetPushThunk(regTableToCapability(reg), p);
 }
 
@@ -616,6 +648,7 @@ inline void updateRemembSetPushClosure(Capability *cap, StgClosure *p)
 {
     if (check_in_nonmoving_heap(p)) {
         MarkQueue *queue = &cap->upd_rem_set.queue;
+        set_mark_queue_ent_source(MARK_QUEUE_UPD_REM_SET);
         push_closure(queue, p, NULL);
     }
 }
@@ -670,6 +703,7 @@ void updateRemembSetPushTSO(Capability *cap, StgTSO *tso)
 {
     if (needs_upd_rem_set_mark((StgClosure *) tso)) {
         debugTrace(DEBUG_nonmoving_gc, "upd_rem_set: TSO %p", tso);
+        set_mark_queue_ent_source(MARK_QUEUE_UPD_REM_SET);
         mark_tso(&cap->upd_rem_set.queue, tso);
         finish_upd_rem_set_mark((StgClosure *) tso);
     }
@@ -680,6 +714,7 @@ void updateRemembSetPushStack(Capability *cap, StgStack *stack)
     // N.B. caller responsible for checking nonmoving_write_barrier_enabled
     if (needs_upd_rem_set_mark((StgClosure *) stack)) {
         StgWord marking = stack->marking;
+        set_mark_queue_ent_source(MARK_QUEUE_UPD_REM_SET);
         // See Note [StgStack dirtiness flags and concurrent marking]
         if (cas(&stack->marking, marking, nonmovingMarkEpoch)
               != nonmovingMarkEpoch) {
@@ -728,22 +763,26 @@ void markQueuePushClosure (MarkQueue *q,
 /* TODO: Do we really never want to specify the origin here? */
 void markQueueAddRoot (MarkQueue* q, StgClosure** root)
 {
+    set_mark_queue_ent_source(MARK_QUEUE_ROOT);
     markQueuePushClosure(q, *root, NULL);
 }
 
 /* Push a closure to the mark queue without origin information */
 void markQueuePushClosure_ (MarkQueue *q, StgClosure *p)
 {
+    set_mark_queue_ent_source(MARK_QUEUE_OTHER);
     markQueuePushClosure(q, p, NULL);
 }
 
 void markQueuePushFunSrt (MarkQueue *q, const StgInfoTable *info)
 {
+    set_mark_queue_ent_source(MARK_QUEUE_OTHER);
     push_fun_srt(q, info);
 }
 
 void markQueuePushThunkSrt (MarkQueue *q, const StgInfoTable *info)
 {
+    set_mark_queue_ent_source(MARK_QUEUE_OTHER);
     push_thunk_srt(q, info);
 }
 
@@ -751,6 +790,7 @@ void markQueuePushArray (MarkQueue *q,
                             const StgMutArrPtrs *array,
                             StgWord start_index)
 {
+    set_mark_queue_ent_source(MARK_QUEUE_OTHER);
     push_array(q, array, start_index);
 }
 
@@ -787,6 +827,9 @@ again:
 
     top->head--;
     MarkQueueEnt ent = top->entries[top->head];
+#if defined(MARK_DUMP)
+    popped_source = ent.source;
+#endif
 
 #if MARK_PREFETCH_QUEUE_DEPTH > 0
     // Avoid a branch by clamping index to 0
