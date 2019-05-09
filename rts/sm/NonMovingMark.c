@@ -1043,6 +1043,7 @@ mark_closure (MarkQueue *queue, const StgClosure *p0, StgClosure **origin)
 
  try_again:
     ;
+    bdescr *bd = NULL;
     StgClosure *p_next = NULL;
     StgWord tag = GET_CLOSURE_TAG(p);
     p = UNTAG_CLOSURE(p);
@@ -1113,7 +1114,7 @@ mark_closure (MarkQueue *queue, const StgClosure *p0, StgClosure **origin)
         }
     }
 
-    bdescr *const bd = Bdescr((StgPtr) p);
+    bd = Bdescr((StgPtr) p);
 
     if (bd->gen != oldest_gen) {
         // Here we have an object living outside of the non-moving heap. While
