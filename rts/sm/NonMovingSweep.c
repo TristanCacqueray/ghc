@@ -47,7 +47,7 @@ void nonmovingPrepareSweep()
             }
             filled->link = nonmovingHeap.sweep_list;
             nonmovingHeap.sweep_list = filled_head;
-            debugBelch("alloc%d: prepared %d filled segments\n", alloc_idx, i);
+            debugTrace(DEBUG_nonmoving_gc, "alloc%d: prepared %d filled segments\n", alloc_idx, i);
         }
 
         if (alloc->active) {
@@ -57,7 +57,7 @@ void nonmovingPrepareSweep()
                 i++;
                 active = active->link;
             }
-            debugBelch("alloc%d: prepared %d active segments\n", alloc_idx, i);
+            debugTrace(DEBUG_nonmoving_gc, "alloc%d: prepared %d active segments\n", alloc_idx, i);
 #if !defined(THREADED_RTS)
             active->link = nonmovingHeap.sweep_list;
             nonmovingHeap.sweep_list = alloc->active;
