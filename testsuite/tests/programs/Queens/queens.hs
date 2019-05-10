@@ -1,11 +1,19 @@
 -- The classic 8-queens problem made famous by Wirth.
 -- This version Colin Runciman, March 2000.
 
+import System.Mem
+import System.IO.Unsafe
+
 main =
     if null solutions then putStrLn "no solution!"
-    else putStr (board (head solutions))
+    else putStr (unlines $ map board (take 5 solutions))
     where
-    solutions = queens 8
+    solutions = map gcAfterSolution $ queens 9
+
+gcAfterSolution :: [Int] -> [Int]
+gcAfterSolution xs = unsafePerformIO $ do
+    sum xs `seq` performMajorGC
+    return xs
 
 queens :: Int -> [[Int]]
 queens n = valid n n
