@@ -44,6 +44,28 @@ void initializeTimer()
 #endif
 }
 
+Time getThreadCPUTime(void)
+{
+#if defined(HAVE_CLOCK_GETTIME)       &&  \
+       defined(CLOCK_PROCESS_CPUTIME_ID) &&  \
+       defined(HAVE_SYSCONF)
+    static int checked_sysconf = 0;
+
+    struct timespec ts;
+    int res;
+    res = clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+    if (res == 0) {
+        return SecondsToTime(ts.tv_sec) + NSToTime(ts.tv_nsec);
+    } else {
+        sysErrorBelch("clock_gettime");
+        stg_exit(EXIT_FAILURE);
+    }
+#else
+    // TODO: How to fallback here?
+    return getProcessCPUTime();
+#endif
+}
+
 Time getProcessCPUTime(void)
 {
 #if !defined(BE_CONSERVATIVE)            &&  \
