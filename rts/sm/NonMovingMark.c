@@ -838,7 +838,7 @@ again:
     // The entry may not be a MARK_CLOSURE but it doesn't matter, our
     // MarkQueueEnt encoding always places the pointer to the object to be
     // marked first.
-    __builtin_prefetch(prefetch_ptr->mark_closure.p);
+    __builtin_prefetch(prefetch_ptr->mark_closure.p, 0, 0);
 #endif
 
     return ent;
