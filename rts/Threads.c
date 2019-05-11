@@ -125,7 +125,7 @@ createThread(Capability *cap, W_ size)
 
     /* Link the new thread on the global thread list.
      */
-    ACQUIRE_LOCK_CHECKED(&sched_mutex);
+    ACQUIRE_LOCK_CHECKED(&sched_mutex, "sched_mutex");
     tso->id = next_thread_id++;  // while we have the mutex
     tso->global_link = g0->threads;
     g0->threads = tso;

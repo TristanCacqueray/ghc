@@ -45,7 +45,7 @@ void hs_spt_insert_stableptr(StgWord64 key[2], StgStablePtr *entry) {
 #endif
   }
 
-  ACQUIRE_LOCK_CHECKED(&spt_lock);
+  ACQUIRE_LOCK_CHECKED(&spt_lock, "spt_lock");
   insertHashTable(spt, (StgWord)key, entry);
   RELEASE_LOCK(&spt_lock);
 }
@@ -68,7 +68,7 @@ static void freeSptEntry(void* entry) {
 
 void hs_spt_remove(StgWord64 key[2]) {
    if (spt) {
-     ACQUIRE_LOCK_CHECKED(&spt_lock);
+     ACQUIRE_LOCK_CHECKED(&spt_lock, "spt_lock");
      StgStablePtr* entry = removeHashTable(spt, (StgWord)key, NULL);
      RELEASE_LOCK(&spt_lock);
 
@@ -79,7 +79,7 @@ void hs_spt_remove(StgWord64 key[2]) {
 
 StgPtr hs_spt_lookup(StgWord64 key1, StgWord64 key2) {
   if (spt) {
-    ACQUIRE_LOCK_CHECKED(&spt_lock);
+    ACQUIRE_LOCK_CHECKED(&spt_lock, "spt_lock");
     StgWord64 key[2] = { key1, key2 };
     const StgStablePtr * entry = lookupHashTable(spt, (StgWord)key);
     const StgPtr ret = entry ? deRefStablePtr(*entry) : NULL;
@@ -91,7 +91,7 @@ StgPtr hs_spt_lookup(StgWord64 key1, StgWord64 key2) {
 
 int hs_spt_keys(StgPtr keys[], int szKeys) {
   if (spt) {
-    ACQUIRE_LOCK_CHECKED(&spt_lock);
+    ACQUIRE_LOCK_CHECKED(&spt_lock, "spt_lock");
     const int ret = keysHashTable(spt, (StgWord*)keys, szKeys);
     RELEASE_LOCK(&spt_lock);
     return ret;

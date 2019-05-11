@@ -1462,7 +1462,7 @@ static bool requestSync (
             // mark thread). Consequently we must wait until the pending sync is
             // finished before proceeding to ensure we don't loop.
             // TODO: Don't busy-wait
-            ACQUIRE_LOCK_CHECKED(&sync_finished_mutex);
+            ACQUIRE_LOCK_CHECKED(&sync_finished_mutex, "sync_finished_mutex");
             while (pending_sync) {
                 waitCondition(&sync_finished_cond, &sync_finished_mutex);
             }

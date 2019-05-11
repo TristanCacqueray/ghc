@@ -126,7 +126,7 @@ void
 stablePtrLock(void)
 {
     initStablePtrTable();
-    ACQUIRE_LOCK_CHECKED(&stable_ptr_mutex);
+    ACQUIRE_LOCK_CHECKED(&stable_ptr_mutex, "stable_ptr_mutex");
 }
 
 void

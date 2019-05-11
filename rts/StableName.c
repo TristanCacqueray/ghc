@@ -43,7 +43,7 @@ void
 stableNameLock(void)
 {
     initStableNameTable();
-    ACQUIRE_LOCK_CHECKED(&stable_name_mutex);
+    ACQUIRE_LOCK_CHECKED(&stable_name_mutex, "stable_name_mutex");
 }
 
 void

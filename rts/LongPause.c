@@ -15,16 +15,16 @@
 
 #if defined(THREADED_RTS)
 
-void longPauseCb(uint64_t dur_ns STG_UNUSED) {
-  //trace(1, "LONG PAUSE %f", 1.0 * dur_ns / 1e9);
-  debugBelch("LONG PAUSE %f\n", 1.0 * dur_ns / 1e9);
+void longPauseCb(uint64_t dur_ns STG_UNUSED, const char *desc STG_UNUSED) {
+  trace(1, "LONG PAUSE(%s) %f", desc, 1.0 * dur_ns / 1e9);
+  debugBelch("LONG PAUSE(%s) %f\n", desc, 1.0 * dur_ns / 1e9);
 }
 
-void ACQUIRE_LOCK_CHECKED_(Mutex *mutex, int max_msec) {
+void ACQUIRE_LOCK_CHECKED_(Mutex *mutex, int max_msec, const char *desc) {
   struct long_pause_ctx ctx;
   LONG_PAUSE_START(&ctx);
   ACQUIRE_LOCK(mutex);
-  LONG_PAUSE_END(&ctx, max_msec);
+  LONG_PAUSE_END(&ctx, max_msec, desc);
 }
 
 #endif
