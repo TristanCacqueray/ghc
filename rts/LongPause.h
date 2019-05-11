@@ -46,6 +46,10 @@ INLINE_HEADER void ACQUIRE_LOCK_CHECKED(Mutex *mutex) {
 
 #else
 
+struct long_pause_ctx {};
+INLINE_HEADER void LONG_PAUSE_START(struct long_pause_ctx *ctx STG_UNUSED) {}
+INLINE_HEADER void LONG_PAUSE_END(struct long_pause_ctx *ctx STG_UNUSED, int max_msec STG_UNUSED) {}
+
 #define ACQUIRE_LOCK_CHECKED(l)
 #define ACQUIRE_LOCK_CHECKED_(l,m)
 
