@@ -187,17 +187,18 @@ static void init_mark_queue_(MarkQueue *queue);
 
 //#define MARK_DUMP
 static enum MarkQueueEntSource mark_queue_ent_source;
-static void
-set_mark_queue_ent_source(enum MarkQueueEntSource source)
-{
-    mark_queue_ent_source = source;
-}
 
 #if defined(MARK_DUMP)
 static StgClosure *current_src = NULL;
 static enum MarkQueueEntSource popped_source = MARK_QUEUE_OTHER;
 static int mark_n = 0;
 static FILE *mark_dump = NULL;
+
+static void
+set_mark_queue_ent_source(enum MarkQueueEntSource source)
+{
+    mark_queue_ent_source = source;
+}
 
 static void 
 mark_dump_start(void)
@@ -270,6 +271,7 @@ mark_dump_edge(StgClosure *tgt)
     fprintf(mark_dump, "  \"%p\" -> \"%p\";\n", UNTAG_CLOSURE(current_src), UNTAG_CLOSURE(tgt));
 }
 #else
+static void set_mark_queue_ent_source(enum MarkQueueEntSource source) {}
 static void mark_dump_start(void) {}
 static void mark_dump_node(StgClosure *c) {}
 static void mark_dump_edge(StgClosure *tgt) {}
