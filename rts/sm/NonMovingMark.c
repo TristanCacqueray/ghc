@@ -37,7 +37,7 @@ static void mark_PAP_payload (MarkQueue *queue,
 #define MARK_ARRAY_CHUNK_LENGTH 128
 
 // How far ahead in mark queue to prefetch?
-#define MARK_PREFETCH_QUEUE_DEPTH 8
+#define MARK_PREFETCH_QUEUE_DEPTH 6
 
 /* Note [Large objects in the non-moving collector]
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
