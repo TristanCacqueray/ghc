@@ -399,6 +399,8 @@ static void nonmovingPrepareMark(void)
     ASSERT(nonmovingHeap.sweep_list == NULL);
 
     nonmovingBumpEpoch();
+    struct long_pause_ctx pause;
+    LONG_PAUSE_START(&pause);
     for (int alloca_idx = 0; alloca_idx < NONMOVING_ALLOCA_CNT; ++alloca_idx) {
         struct NonmovingAllocator *alloca = nonmovingHeap.allocators[alloca_idx];
 
@@ -431,12 +433,15 @@ static void nonmovingPrepareMark(void)
             seg->link = nonmovingHeap.sweep_list;
             nonmovingHeap.sweep_list = filled;
         }
+        trace(TRACE_nonmoving_gc, "alloc%d: prepared %d filled segments", alloca_idx, n_filled);
 
         // N.B. It's not necessary to update snapshot pointers of active segments;
         // they were set after they were swept and haven't seen any allocation
         // since.
     }
+    LONG_PAUSE_END(&pause, 20, "take-snapshot");
 
+    LONG_PAUSE_START(&pause);
     ASSERT(oldest_gen->scavenged_large_objects == NULL);
     bdescr *next;
     for (bdescr *bd = oldest_gen->large_objects; bd; bd = next) {
@@ -444,6 +449,7 @@ static void nonmovingPrepareMark(void)
         bd->flags |= BF_NONMOVING_SWEEPING;
         dbl_link_onto(bd, &nonmoving_large_objects);
     }
+    LONG_PAUSE_END(&pause, 20, "large-objects");
     n_nonmoving_large_blocks += oldest_gen->n_large_blocks;
     oldest_gen->large_objects = NULL;
     oldest_gen->n_large_words = 0;
@@ -504,12 +510,16 @@ void nonmovingCollect(StgWeak **dead_weaks, StgTSO **resurrected_threads)
     }
 #endif
 
+    struct long_pause_ctx pause;
+    LONG_PAUSE_START(&pause);
     nonmovingPrepareMark();
+    LONG_PAUSE_END(&pause, 20, "prepare-mark");
 
     // N.B. These should have been cleared at the end of the last sweep.
     ASSERT(nonmoving_marked_large_objects == NULL);
     ASSERT(n_nonmoving_marked_large_blocks == 0);
 
+    LONG_PAUSE_START(&pause);
     MarkQueue *mark_queue = stgMallocBytes(sizeof(MarkQueue), "mark queue");
     initMarkQueue(mark_queue);
     current_mark_queue = mark_queue;
@@ -528,6 +538,7 @@ void nonmovingCollect(StgWeak **dead_weaks, StgTSO **resurrected_threads)
     for (StgTSO *tso = *resurrected_threads; tso != END_TSO_QUEUE; tso = tso->global_link) {
         markQueuePushClosure_(mark_queue, (StgClosure*)tso);
     }
+    LONG_PAUSE_END(&pause, 20, "root-marking");
 
     // Roots marked, mark threads and weak pointers
 

@@ -16,7 +16,7 @@
 #if defined(THREADED_RTS)
 
 void longPauseCb(uint64_t dur_ns STG_UNUSED, const char *desc STG_UNUSED) {
-  trace(1, "LONG PAUSE(%s) %f", desc, 1.0 * dur_ns / 1e9);
+  trace(TRACE_gc, "LONG PAUSE(%s) %f", desc, 1.0 * dur_ns / 1e9);
   debugBelch("LONG PAUSE(%s) %f\n", desc, 1.0 * dur_ns / 1e9);
 }
 
