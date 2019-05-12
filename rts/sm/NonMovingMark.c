@@ -486,7 +486,7 @@ void markQueuePushClosureGC (MarkQueue *q, StgClosure *p)
     q->top->head++;
 }
 
-static
+static inline
 void push_closure (MarkQueue *q,
                    StgClosure *p,
                    StgClosure **origin)
