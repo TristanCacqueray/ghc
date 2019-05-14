@@ -151,6 +151,11 @@ typedef struct GCDetails_ {
   Time cpu_ns;
     // The time elapsed during GC itself
   Time elapsed_ns;
+
+    //
+    // Concurrent garbage collector
+    //
+
     // The CPU time used during the post-mark pause phase of the concurrent
     // nonmoving GC.
   Time nonmoving_gc_sync_cpu_ns;
@@ -160,6 +165,15 @@ typedef struct GCDetails_ {
     // The maximum time elapsed during the post-mark pause phase of the
     // concurrent nonmoving GC.
   Time nonmoving_gc_sync_max_elapsed_ns;
+    // The CPU time used during the post-mark pause phase of the concurrent
+    // nonmoving GC.
+  Time nonmoving_gc_cpu_ns;
+    // The time elapsed during the post-mark pause phase of the concurrent
+    // nonmoving GC.
+  Time nonmoving_gc_elapsed_ns;
+    // The maximum time elapsed during the post-mark pause phase of the
+    // concurrent nonmoving GC.
+  Time nonmoving_gc_max_elapsed_ns;
 } GCDetails;
 
 //

@@ -650,6 +650,7 @@ static void nonmovingMark_(MarkQueue *mark_queue, StgWeak **dead_weaks, StgTSO *
 {
     ACQUIRE_LOCK(&nonmoving_collection_mutex);
     debugTrace(DEBUG_nonmoving_gc, "Starting mark...");
+    stat_startNonmovingGc();
 
     // Do concurrent marking; most of the heap will get marked here.
     nonmovingMarkThreadsWeaks(mark_queue);
@@ -801,6 +802,7 @@ finish:
 
     // We are done...
     mark_thread = 0;
+    stat_endNonmovingGc();
 
     // Signal that the concurrent collection is finished, allowing the next
     // non-moving collection to proceed
