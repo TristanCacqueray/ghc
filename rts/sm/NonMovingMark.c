@@ -36,9 +36,6 @@ static void mark_PAP_payload (MarkQueue *queue,
 // How many Array# entries to add to the mark queue at once?
 #define MARK_ARRAY_CHUNK_LENGTH 128
 
-// How far ahead in mark queue to prefetch?
-#define MARK_PREFETCH_QUEUE_DEPTH 6
-
 /* Note [Large objects in the non-moving collector]
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  * The nonmoving collector keeps a separate list of its large objects, apart from
@@ -801,7 +798,7 @@ void markQueuePushArray (MarkQueue *q,
  *********************************************************/
 
 // Returns invalid MarkQueueEnt if queue is empty.
-static MarkQueueEnt markQueuePop (MarkQueue *q)
+static MarkQueueEnt markQueuePop_ (MarkQueue *q)
 {
     MarkQueueBlock *top;
 
@@ -832,18 +829,36 @@ again:
 #if defined(MARK_DUMP)
     popped_source = ent.source;
 #endif
-
-#if MARK_PREFETCH_QUEUE_DEPTH > 0
-    // Avoid a branch by clamping index to 0
-    uint32_t prefetch_idx = top->head > MARK_PREFETCH_QUEUE_DEPTH ? top->head - MARK_PREFETCH_QUEUE_DEPTH : 0;
-    MarkQueueEnt *prefetch_ptr = &top->entries[prefetch_idx];
-    // The entry may not be a MARK_CLOSURE but it doesn't matter, our
-    // MarkQueueEnt encoding always places the pointer to the object to be
-    // marked first.
-    __builtin_prefetch(prefetch_ptr->mark_closure.p, 0, 0);
-#endif
-
     return ent;
+}
+
+
+static MarkQueueEnt markQueuePop (MarkQueue *q)
+{
+#if MARK_PREFETCH_QUEUE_DEPTH == 0
+    return markQueuePop_(q);
+#else
+    unsigned int i = q->prefetch_head;
+    while (nonmovingMarkQueueEntryType(&q->prefetch_queue[i]) == NULL_ENTRY) {
+        MarkQueueEnt new = markQueuePop_(q);
+        if (nonmovingMarkQueueEntryType(&new) == NULL_ENTRY)
+            return new;
+
+        // The entry may not be a MARK_CLOSURE but it doesn't matter, our
+        // MarkQueueEnt encoding always places the pointer to the object to be
+        // marked first.
+        __builtin_prefetch(&new.mark_closure.p, 0, 0);
+        q->prefetch_queue[i] = new;
+        i = (i + 1) % MARK_PREFETCH_QUEUE_DEPTH;
+    }
+    MarkQueueEnt ret = q->prefetch_queue[i];
+    q->prefetch_queue[i].null_entry.p = NULL;
+    q->prefetch_head = i;
+    return ret;
+    //__builtin_prefetch(&prefetch_ptr[1].mark_closure.p->header.info, 0, 0);
+    //__builtin_prefetch(INFO_PTR_TO_STRUCT(prefetch_ptr[3].mark_closure.p->header.info), 0, 0);
+    //__builtin_prefetch(&nonmovingGetSegment_unchecked((StgPtr) prefetch_ptr[4].mark_closure.p)->block_size, 0, 0);
+#endif
 }
 
 /*********************************************************
@@ -857,6 +872,10 @@ static void init_mark_queue_ (MarkQueue *queue)
     queue->blocks = bd;
     queue->top = (MarkQueueBlock *) bd->start;
     queue->top->head = 0;
+#if MARK_PREFETCH_QUEUE_DEPTH > 0
+    memset(&queue->prefetch_queue, 0, sizeof(queue->prefetch_queue));
+    queue->prefetch_head = 0;
+#endif
 }
 
 /* Must hold sm_mutex. */
