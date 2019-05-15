@@ -3,7 +3,6 @@
 #include "Trace.h"
 #include "Printer.h"
 
-//#define TRACE_DUMP
 #if defined(TRACE_DUMP)
 static int gc_n = 0;
 static FILE *trace_dump = NULL;
@@ -76,14 +75,5 @@ trace_dump_edge(StgClosure *tgt)
         return;
     fprintf(trace_dump, "  \"%s\" -> \"%p\";\n", current_src, UNTAG_CLOSURE(tgt));
 }
-
-#else
-
-void trace_dump_start_gc(void) {}
-void trace_dump_end_gc(void) {}
-void trace_dump_set_source_closure(StgClosure *c) {}
-void trace_dump_set_source(const char *c) {}
-void trace_dump_node(StgClosure *c) {}
-void trace_dump_edge(StgClosure *tgt) {}
 
 #endif
