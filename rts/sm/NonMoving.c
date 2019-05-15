@@ -18,6 +18,7 @@
 #include "GCThread.h"
 #include "GCTDecl.h"
 #include "Schedule.h"
+#include "Stats.h"
 
 #include "NonMoving.h"
 #include "NonMovingMark.h"

@@ -86,7 +86,7 @@ Time stat_getElapsedTime(void)
 double
 mut_user_time_until( Time t )
 {
-    return TimeToSecondsDbl(t - stats.gc_cpu_ns);
+    return TimeToSecondsDbl(t - stats.gc_cpu_ns - stats.nonmoving_gc_cpu_ns);
     // heapCensus() time is included in GC_tot_cpu, so we don't need
     // to subtract it here.
 
@@ -126,6 +126,10 @@ initStats0(void)
     start_init_elapsed = 0;
     end_init_cpu     = 0;
     end_init_elapsed  = 0;
+
+    start_nonmoving_gc_cpu = 0;
+    start_nonmoving_gc_elapsed = 0;
+    start_nonmoving_gc_sync_elapsed = 0;
 
     start_exit_cpu    = 0;
     start_exit_elapsed = 0;
@@ -177,6 +181,11 @@ initStats0(void)
         .gc_elapsed_ns = 0,
         .cpu_ns = 0,
         .elapsed_ns = 0,
+        .nonmoving_gc_cpu_ns = 0,
+        .nonmoving_gc_elapsed_ns = 0,
+        .nonmoving_gc_max_elapsed_ns = 0,
+        .nonmoving_gc_sync_elapsed_ns = 0,
+        .nonmoving_gc_sync_max_elapsed_ns = 0,
         .gc = {
             .gen = 0,
             .threads = 0,
@@ -194,9 +203,7 @@ initStats0(void)
             .elapsed_ns = 0,
             .nonmoving_gc_cpu_ns = 0,
             .nonmoving_gc_elapsed_ns = 0,
-            .nonmoving_gc_max_elapsed_ns = 0,
             .nonmoving_gc_sync_elapsed_ns = 0,
-            .nonmoving_gc_sync_max_elapsed_ns = 0,
         }
     };
 }
@@ -310,10 +317,15 @@ stat_endNonmovingGc ()
 {
     Time cpu = getMyThreadCPUTime();
     Time elapsed = getProcessCPUTime();
-    stats.gc.nonmoving_gc_elapsed_ns += elapsed - start_nonmoving_gc_elapsed;
-    stats.gc.nonmoving_gc_cpu_ns += cpu - start_nonmoving_gc_cpu;
-    stats.gc.nonmoving_gc_max_elapsed_ns =
-      stg_max(stats.gc.nonmoving_gc_max_elapsed_ns, elapsed - start_nonmoving_gc_elapsed);
+    stats.gc.nonmoving_gc_elapsed_ns = elapsed - start_nonmoving_gc_elapsed;
+    stats.nonmoving_gc_elapsed_ns += stats.gc.nonmoving_gc_elapsed_ns;
+
+    stats.gc.nonmoving_gc_cpu_ns = cpu - start_nonmoving_gc_cpu;
+    stats.nonmoving_gc_cpu_ns += stats.gc.nonmoving_gc_cpu_ns;
+
+    stats.nonmoving_gc_max_elapsed_ns =
+      stg_max(stats.gc.nonmoving_gc_elapsed_ns,
+              stats.nonmoving_gc_max_elapsed_ns);
 }
 
 void
@@ -327,10 +339,11 @@ void
 stat_endNonmovingGcSync ()
 {
     Time end_elapsed = getProcessElapsedTime();
-    stats.gc.nonmoving_gc_sync_elapsed_ns += end_elapsed - start_nonmoving_gc_sync_elapsed;
-    stats.gc.nonmoving_gc_sync_max_elapsed_ns =
-      stg_max(end_elapsed - start_nonmoving_gc_sync_elapsed,
-              stats.gc.nonmoving_gc_sync_max_elapsed_ns);
+    stats.gc.nonmoving_gc_sync_elapsed_ns = end_elapsed - start_nonmoving_gc_sync_elapsed;
+    stats.nonmoving_gc_sync_elapsed_ns +=  stats.gc.nonmoving_gc_sync_elapsed_ns;
+    stats.nonmoving_gc_sync_max_elapsed_ns =
+      stg_max(stats.gc.nonmoving_gc_sync_elapsed_ns,
+              stats.nonmoving_gc_sync_max_elapsed_ns);
     traceConcSyncEnd();
 }
 
@@ -344,18 +357,33 @@ stat_endNonmovingGcSync ()
  * scavenging. These are then summed over at the end of the GC.
  *
  * By contrast, the elapsed time is recorded only by the thread driving the GC.
+ *
+ * Mutator time is derived from the process's CPU time, subtracting out
+ * contributions from stop-the-world and concurrent GCs.
  */
 
 void
 stat_startGCWorker (Capability *cap STG_UNUSED, gc_thread *gct)
 {
-    gct->gc_start_cpu = getMyThreadCPUTime();
+    bool stats_enabled =
+        RtsFlags.GcFlags.giveStats != NO_GC_STATS ||
+        rtsConfig.gcDoneHook != NULL;
+
+    if (stats_enabled || RtsFlags.ProfFlags.doHeapProfile) {
+        gct->gc_start_cpu = getMyThreadCPUTime();
+    }
 }
 
 void
 stat_endGCWorker (Capability *cap STG_UNUSED, gc_thread *gct)
 {
-    gct->gc_end_cpu = getMyThreadCPUTime();
+    bool stats_enabled =
+        RtsFlags.GcFlags.giveStats != NO_GC_STATS ||
+        rtsConfig.gcDoneHook != NULL;
+
+    if (stats_enabled || RtsFlags.ProfFlags.doHeapProfile) {
+        gct->gc_end_cpu = getMyThreadCPUTime();
+    }
 }
 
 void
@@ -365,7 +393,14 @@ stat_startGC (Capability *cap, gc_thread *gct)
         debugBelch("\007");
     }
 
-    gct->gc_start_cpu = getMyThreadCPUTime();
+    bool stats_enabled =
+        RtsFlags.GcFlags.giveStats != NO_GC_STATS ||
+        rtsConfig.gcDoneHook != NULL;
+
+    if (stats_enabled || RtsFlags.ProfFlags.doHeapProfile) {
+        gct->gc_start_cpu = getMyThreadCPUTime();
+    }
+
     gct->gc_start_elapsed = getProcessElapsedTime();
 
     // Post EVENT_GC_START with the same timestamp as used for stats
@@ -791,15 +826,15 @@ static void report_summary(const RTSSummaryStats* sum)
         statsPrintf("  Gen  1     %5d syncs"
                     ",                      %6.3fs     %3.4fs    %3.4fs\n",
                     n_major_colls,
-                    TimeToSecondsDbl(stats.gc.nonmoving_gc_sync_elapsed_ns),
-                    TimeToSecondsDbl(stats.gc.nonmoving_gc_sync_elapsed_ns) / n_major_colls,
-                    TimeToSecondsDbl(stats.gc.nonmoving_gc_sync_max_elapsed_ns));
+                    TimeToSecondsDbl(stats.nonmoving_gc_sync_elapsed_ns),
+                    TimeToSecondsDbl(stats.nonmoving_gc_sync_elapsed_ns) / n_major_colls,
+                    TimeToSecondsDbl(stats.nonmoving_gc_sync_max_elapsed_ns));
         statsPrintf("  Gen  1      concurrent"
                     ",             %6.3fs  %6.3fs     %3.4fs    %3.4fs\n",
-                    TimeToSecondsDbl(stats.gc.nonmoving_gc_cpu_ns),
-                    TimeToSecondsDbl(stats.gc.nonmoving_gc_elapsed_ns),
-                    TimeToSecondsDbl(stats.gc.nonmoving_gc_elapsed_ns) / n_major_colls,
-                    TimeToSecondsDbl(stats.gc.nonmoving_gc_max_elapsed_ns));
+                    TimeToSecondsDbl(stats.nonmoving_gc_cpu_ns),
+                    TimeToSecondsDbl(stats.nonmoving_gc_elapsed_ns),
+                    TimeToSecondsDbl(stats.nonmoving_gc_elapsed_ns) / n_major_colls,
+                    TimeToSecondsDbl(stats.nonmoving_gc_max_elapsed_ns));
     }
 
     statsPrintf("\n");
@@ -840,8 +875,8 @@ static void report_summary(const RTSSummaryStats* sum)
     if (RtsFlags.GcFlags.useNonmoving) {
         statsPrintf(
                 "  CONC GC time  %7.3fs  (%7.3fs elapsed)\n",
-                TimeToSecondsDbl(stats.gc.nonmoving_gc_cpu_ns),
-                TimeToSecondsDbl(stats.gc.nonmoving_gc_elapsed_ns));
+                TimeToSecondsDbl(stats.nonmoving_gc_cpu_ns),
+                TimeToSecondsDbl(stats.nonmoving_gc_elapsed_ns));
     }
 
 #if defined(PROFILING)
@@ -1201,8 +1236,8 @@ stat_exit (void)
 
             stats.mutator_cpu_ns     = start_exit_cpu
                                  - end_init_cpu
-                                 - (stats.gc_cpu_ns - exit_gc_cpu)
-                                 - stats.gc.nonmoving_gc_cpu_ns;
+                                 - (stats.gc_cpu_ns - exit_gc_cpu);
+                                 - stats.nonmoving_gc_cpu_ns;
             stats.mutator_elapsed_ns = start_exit_elapsed
                                  - end_init_elapsed
                                  - (stats.gc_elapsed_ns - exit_gc_elapsed);
@@ -1612,7 +1647,7 @@ void getRTSStats( RTSStats *s )
     s->elapsed_ns = current_elapsed - end_init_elapsed;
 
     s->mutator_cpu_ns = current_cpu - end_init_cpu - stats.gc_cpu_ns -
-        stats.gc.nonmoving_gc_cpu_ns;
+        stats.nonmoving_gc_cpu_ns;
     s->mutator_elapsed_ns = current_elapsed - end_init_elapsed -
         stats.gc_elapsed_ns;
 }
