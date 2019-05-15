@@ -1667,7 +1667,6 @@ scavenge_mutable_list(bdescr *bd, generation *gen)
 
             if (RtsFlags.GcFlags.useNonmoving && major_gc && gen == oldest_gen) {
                 // We can't use scavenge_one here as we need to scavenge SRTs
-                gct->failed_to_evac = false; // otherwise nonmovingScavengeOne will add the object
                 nonmovingScavengeOne((StgClosure *)p);
             } else if (scavenge_one(p)) {
                 // didn't manage to promote everything, so put the
