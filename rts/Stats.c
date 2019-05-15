@@ -1236,7 +1236,7 @@ stat_exit (void)
 
             stats.mutator_cpu_ns     = start_exit_cpu
                                  - end_init_cpu
-                                 - (stats.gc_cpu_ns - exit_gc_cpu);
+                                 - (stats.gc_cpu_ns - exit_gc_cpu)
                                  - stats.nonmoving_gc_cpu_ns;
             stats.mutator_elapsed_ns = start_exit_elapsed
                                  - end_init_elapsed
