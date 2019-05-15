@@ -35,9 +35,6 @@ static void mark_PAP_payload (MarkQueue *queue,
 // How many Array# entries to add to the mark queue at once?
 #define MARK_ARRAY_CHUNK_LENGTH 128
 
-// How far ahead in mark queue to prefetch?
-#define MARK_PREFETCH_QUEUE_DEPTH 8
-
 /* Note [Large objects in the non-moving collector]
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  * The nonmoving collector keeps a separate list of its large objects, apart from
@@ -698,17 +695,6 @@ again:
 
     q->top->head--;
     MarkQueueEnt ent = q->top->entries[q->top->head];
-
-#if MARK_PREFETCH_QUEUE_DEPTH > 0
-    // Avoid a branch by clamping index to 0
-    int prefetch_idx = top->head > MARK_PREFETCH_QUEUE_DEPTH ? top->head - MARK_PREFETCH_QUEUE_DEPTH : 0;
-    MarkQueueEnt *prefetch_ptr = &top->entries[prefetch_idx];
-    // The entry may not be a MARK_CLOSURE but it doesn't matter, our
-    // MarkQueueEnt encoding always places the pointer to the object to be
-    // marked first.
-    __builtin_prefetch(prefetch_ptr->mark_closure.p);
-#endif
-
     return ent;
 }
 
