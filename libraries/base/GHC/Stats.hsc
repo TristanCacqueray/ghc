@@ -103,6 +103,25 @@ data RTSStats = RTSStats {
     -- | Total elapsed time (at the previous GC)
   , elapsed_ns :: RtsTime
 
+    -- | The CPU time used during the post-mark pause phase of the concurrent
+    -- nonmoving GC.
+  , nonmoving_gc_sync_cpu_ns :: RtsTime
+    -- | The time elapsed during the post-mark pause phase of the concurrent
+    -- nonmoving GC.
+  , nonmoving_gc_sync_elapsed_ns :: RtsTime
+    -- | The maximum time elapsed during the post-mark pause phase of the
+    -- concurrent nonmoving GC.
+  , nonmoving_gc_sync_max_elapsed_ns :: RtsTime
+    -- | The CPU time used during the post-mark pause phase of the concurrent
+    -- nonmoving GC.
+  , nonmoving_gc_cpu_ns :: RtsTime
+    -- | The time elapsed during the post-mark pause phase of the concurrent
+    -- nonmoving GC.
+  , nonmoving_gc_elapsed_ns :: RtsTime
+    -- | The maximum time elapsed during the post-mark pause phase of the
+    -- concurrent nonmoving GC.
+  , nonmoving_gc_max_elapsed_ns :: RtsTime
+
     -- | Details about the most recent GC
   , gc :: GCDetails
   } deriving ( Read -- ^ @since 4.10.0.0
@@ -153,9 +172,6 @@ data GCDetails = GCDetails {
     -- | The time elapsed during the post-mark pause phase of the concurrent
     -- nonmoving GC.
   , gcdetails_nonmoving_gc_sync_elapsed_ns :: RtsTime
-    -- | The maximum time elapsed during the post-mark pause phase of the
-    -- concurrent nonmoving GC.
-  , gcdetails_nonmoving_gc_sync_max_elapsed_ns :: RtsTime
   } deriving ( Read -- ^ @since 4.10.0.0
              , Show -- ^ @since 4.10.0.0
              )
@@ -202,6 +218,12 @@ getRTSStats = do
     gc_elapsed_ns <- (# peek RTSStats, gc_elapsed_ns) p
     cpu_ns <- (# peek RTSStats, cpu_ns) p
     elapsed_ns <- (# peek RTSStats, elapsed_ns) p
+    nonmoving_gc_sync_cpu_ns <- (# peek RTSStats, nonmoving_gc_sync_cpu_ns) p
+    nonmoving_gc_sync_elapsed_ns <- (# peek RTSStats, nonmoving_gc_sync_elapsed_ns) p
+    nonmoving_gc_sync_max_elapsed_ns <- (# peek RTSStats, nonmoving_gc_sync_max_elapsed_ns) p
+    nonmoving_gc_cpu_ns <- (# peek RTSStats, nonmoving_gc_cpu_ns) p
+    nonmoving_gc_elapsed_ns <- (# peek RTSStats, nonmoving_gc_elapsed_ns) p
+    nonmoving_gc_max_elapsed_ns <- (# peek RTSStats, nonmoving_gc_max_elapsed_ns) p
     let pgc = (# ptr RTSStats, gc) p
     gc <- do
       gcdetails_gen <- (# peek GCDetails, gen) pgc
@@ -223,6 +245,5 @@ getRTSStats = do
       gcdetails_elapsed_ns <- (# peek GCDetails, elapsed_ns) pgc
       gcdetails_nonmoving_gc_sync_cpu_ns <- (# peek GCDetails, nonmoving_gc_sync_cpu_ns) pgc
       gcdetails_nonmoving_gc_sync_elapsed_ns <- (# peek GCDetails, nonmoving_gc_sync_elapsed_ns) pgc
-      gcdetails_nonmoving_gc_sync_max_elapsed_ns <- (# peek GCDetails, nonmoving_gc_sync_max_elapsed_ns) pgc
       return GCDetails{..}
     return RTSStats{..}
