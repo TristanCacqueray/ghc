@@ -841,8 +841,20 @@ static MarkQueueEnt markQueuePop (MarkQueue *q)
     unsigned int i = q->prefetch_head;
     while (nonmovingMarkQueueEntryType(&q->prefetch_queue[i]) == NULL_ENTRY) {
         MarkQueueEnt new = markQueuePop_(q);
-        if (nonmovingMarkQueueEntryType(&new) == NULL_ENTRY)
+        if (nonmovingMarkQueueEntryType(&new) == NULL_ENTRY) {
+            // Mark queue is empty; look for any valid entries in the prefetch
+            // queue
+            for (unsigned int j = (i+1) % MARK_PREFETCH_QUEUE_DEPTH;
+                 j != i;
+                 j = (j+1) % MARK_PREFETCH_QUEUE_DEPTH)
+            {
+                if (nonmovingMarkQueueEntryType(&q->prefetch_queue[j]) != NULL_ENTRY) {
+                    i = j;
+                    goto done;
+                }
+            }
             return new;
+        }
 
         // The entry may not be a MARK_CLOSURE but it doesn't matter, our
         // MarkQueueEnt encoding always places the pointer to the object to be
@@ -852,6 +864,9 @@ static MarkQueueEnt markQueuePop (MarkQueue *q)
         q->prefetch_queue[i] = new;
         i = (i + 1) % MARK_PREFETCH_QUEUE_DEPTH;
     }
+
+  done:
+    ;
     MarkQueueEnt ret = q->prefetch_queue[i];
     q->prefetch_queue[i].null_entry.p = NULL;
     q->prefetch_head = i;
