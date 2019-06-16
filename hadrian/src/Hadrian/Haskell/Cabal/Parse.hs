@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module     : Hadrian.Haskell.Cabal.Parse
@@ -65,7 +67,11 @@ parsePackageData pkg = do
         libDeps = collectDeps (C.condLibrary gpd)
         exeDeps = map (collectDeps . Just . snd) (C.condExecutables gpd)
         allDeps = concat (libDeps : exeDeps)
+#if MIN_VERSION_Cabal(3,0,0)
         sorted  = sort [ C.unPackageName p | C.Dependency p _ _ <- allDeps ]
+#else
+        sorted  = sort [ C.unPackageName p | C.Dependency p _ <- allDeps ]
+#endif
         deps    = nubOrd sorted \\ [name]
         depPkgs = catMaybes $ map findPackageByName deps
     return $ PackageData name version (C.synopsis pd) (C.description pd) depPkgs gpd
@@ -307,7 +313,11 @@ buildAutogenFiles context = do
 getHookedBuildInfo :: [FilePath] -> IO C.HookedBuildInfo
 getHookedBuildInfo [] = return C.emptyHookedBuildInfo
 getHookedBuildInfo (baseDir:baseDirs) = do
+#if MIN_VERSION_Cabal(3,0,0)
     maybeInfoFile <- C.findHookedPackageDesc C.normal baseDir
+#else
+    maybeInfoFile <- C.findHookedPackageDesc baseDir
+#endif
     case maybeInfoFile of
         Nothing       -> getHookedBuildInfo baseDirs
         Just infoFile -> C.readHookedBuildInfo C.silent infoFile

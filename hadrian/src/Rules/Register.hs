@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 module Rules.Register (
     configurePackageRules, registerPackageRules, registerPackages,
     libraryTargets
@@ -21,9 +23,14 @@ import Hadrian.Haskell.Cabal.Type
 import qualified Text.Parsec      as Parsec
 
 import Distribution.Version (Version)
+#if MIN_VERSION_Cabal(3,0,0)
 import qualified Distribution.Parsec as Cabal
 import qualified Distribution.Types.PackageName as Cabal
 import qualified Distribution.Types.PackageId as Cabal
+#else
+import qualified Distribution.Compat.ReadP as Parse
+import Distribution.ParseUtils
+#endif
 
 import qualified Hadrian.Haskell.Cabal.Parse as Cabal
 import qualified System.Directory            as IO
@@ -178,10 +185,16 @@ getPackageNameFromConfFile conf
         Right (name, _) -> return name
 
 parseCabalName :: String -> Either String (String, Version)
+#if MIN_VERSION_Cabal(3,0,0)
 parseCabalName = fmap f . Cabal.eitherParsec
   where
     f :: Cabal.PackageId -> (String, Version)
     f pkg_id = (Cabal.unPackageName $ Cabal.pkgName pkg_id, Cabal.pkgVersion pkg_id)
+#else
+parseCabalName = maybe (Left "parseCabalName: parse error") Right . readPToMaybe parse
+  where
+    parse = (,) <$> (parsePackageName <* Parse.char '-') <*> parseOptVersion
+#endif
 
 -- | Return extra library targets.
 extraTargets :: Context -> Action [FilePath]
