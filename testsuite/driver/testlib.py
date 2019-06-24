@@ -411,13 +411,17 @@ def _collect_stats(name, opts, metrics, deviation, is_compiler_stats_test=False)
     opts.is_stats_test = True
     if is_compiler_stats_test:
         opts.is_compiler_stats_test = True
+        tag = 'compile_time'
+    else:
+        tag = 'runtime_time'
 
     # Compiler performance numbers change when debugging is on, making the results
     # useless and confusing. Therefore, skip if debugging is on.
     if config.compiler_debugged and is_compiler_stats_test:
-        opts.skip = 1
+        opts.skip = True
 
-    for metric in metrics:
+    for metric_name in metrics:
+        metric = '{}/{}'.format(tag, metric_name)
         def baselineByWay(way, target_commit, metric=metric):
             return Perf.baseline_metric( \
                               target_commit, name, config.test_env, metric, way)
