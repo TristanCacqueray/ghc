@@ -1,12 +1,9 @@
-{-# LANGUAGE RankNTypes, QuantifiedConstraints, ConstraintKinds  #-}
--- NB: disabling these if enabled:
-{-# LANGUAGE NoUndecidableInstances, NoUndecidableSuperClasses #-}
+{-# LANGUAGE RankNTypes, QuantifiedConstraints, ConstraintKinds, UndecidableInstances #-}
 
 module T15316 where
 
 import Data.Proxy
 
-{-
 class Class a where
          method :: a
 
@@ -15,7 +12,4 @@ subsume _ _ x = x
 
 value :: Proxy a -> a
 value p = subsume p p method
--}
 
-subsume' :: Proxy c -> ((c => c) => r) -> r
-subsume' _ x = x
