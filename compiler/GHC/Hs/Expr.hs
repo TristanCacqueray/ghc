@@ -221,6 +221,7 @@ data HsExpr p
 
   | HsIPVar   (XIPVar p)
               HsIPName   -- ^ Implicit parameter (not in use after typechecking)
+
   | HsOverLit (XOverLitE p)
               (HsOverLit p)  -- ^ Overloaded literals
 
@@ -508,7 +509,7 @@ data HsExpr p
   -- See Note [Detecting forced eta expansion] in DsExpr. This invariant
   -- is maintained by GHC.Hs.Utils.mkHsWrap.
 
-  |  HsWrap     (XWrap p)
+  | HsWrap      (XWrap p)
                 HsWrapper    -- TRANSLATION
                 (HsExpr p)
 
