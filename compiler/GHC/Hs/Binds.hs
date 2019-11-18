@@ -359,11 +359,11 @@ data ABExport p
 type instance XABE       (GhcPass p) = NoExtField
 type instance XXABExport (GhcPass p) = NoExtCon
 
-convertABExport :: (XABE p ~ XABE p', IdP p ~ IdP p')
+convertABExport :: (XABE p ~ XABE p', IdP p ~ IdP p', XXABExport p ~ XXABExport p')
                 => ABExport p
                 -> ABExport p'
-convertABExport (ABE ext poly mono wrap prags) =
-    ABE ext poly mono wrap prags
+convertABExport (ABE ext poly mono wrap prags) = ABE ext poly mono wrap prags
+convertABExport (XABExport ext) = XABExport ext
 
 -- | - 'ApiAnnotation.AnnKeywordId' : 'ApiAnnotation.AnnPattern',
 --             'ApiAnnotation.AnnEqual','ApiAnnotation.AnnLarrow'

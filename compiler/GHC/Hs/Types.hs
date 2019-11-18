@@ -1440,10 +1440,13 @@ ambiguousFieldOcc :: FieldOcc GhcTc -> AmbiguousFieldOcc GhcTc
 ambiguousFieldOcc (FieldOcc sel rdr) = Unambiguous sel rdr
 ambiguousFieldOcc (XFieldOcc nec) = noExtCon nec
 
-convertAmbiguousFieldOcc :: (XUnambiguous p ~ XUnambiguous p', XAmbiguous p ~ XAmbiguous p')
+convertAmbiguousFieldOcc :: ( XUnambiguous p ~ XUnambiguous p'
+                            , XAmbiguous p ~ XAmbiguous p'
+                            , XXAmbiguousFieldOcc p ~ XXAmbiguousFieldOcc p' )
                          => AmbiguousFieldOcc p -> AmbiguousFieldOcc p'
 convertAmbiguousFieldOcc (Unambiguous ext rdr) = Unambiguous ext rdr
 convertAmbiguousFieldOcc (Ambiguous ext rdr) = Ambiguous ext rdr
+convertAmbiguousFieldOcc (XAmbiguousFieldOcc ext) = XAmbiguousFieldOcc ext
 
 {-
 ************************************************************************
