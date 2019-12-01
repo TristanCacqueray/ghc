@@ -67,7 +67,7 @@ import qualified Language.Haskell.TH as TH (Q)
 -- * Expressions proper
 
 -- | Located Haskell Expression
-type LHsExpr p = Located (HsExpr p)
+type LHsExpr p = XRec p (HsExpr p)
   -- ^ May have 'ApiAnnotation.AnnKeywordId' : 'ApiAnnotation.AnnComma' when
   --   in a list
 
