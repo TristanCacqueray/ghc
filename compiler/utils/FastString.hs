@@ -1,7 +1,8 @@
 -- (c) The University of Glasgow, 1997-2006
 
 {-# LANGUAGE BangPatterns, CPP, MagicHash, UnboxedTuples,
-    GeneralizedNewtypeDeriving #-}
+    GeneralizedNewtypeDeriving, DeriveFunctor, DeriveFoldable,
+    DeriveTraversable #-}
 {-# OPTIONS_GHC -O2 -funbox-strict-fields #-}
 -- We always optimise this, otherwise performance of a non-optimised
 -- compiler is severely affected
@@ -119,6 +120,7 @@ import Data.Data
 import Data.IORef
 import Data.Char
 import Data.Semigroup as Semi
+import Data.Foldable as Foldable
 
 import GHC.IO
 
@@ -256,7 +258,11 @@ data FastStringTable = FastStringTable
 data FastStringTableSegment = FastStringTableSegment
   {-# UNPACK #-} !(MVar ()) -- the lock for write in each segment
   {-# UNPACK #-} !(IORef Int) -- the number of elements
-  (MutableArray# RealWorld [FastString]) -- buckets in this segment
+  (MutableArray# RealWorld (StrictList FastString)) -- buckets in this segment
+
+data StrictList a = StrictNil
+                  | StrictCons !a !(StrictList a)
+                  deriving (Functor, Foldable, Traversable)
 
 {-
 Following parameters are determined based on:
@@ -276,7 +282,7 @@ hashToSegment# hash# = hash# `andI#` segmentMask#
   where
     !(I# segmentMask#) = segmentMask
 
-hashToIndex# :: MutableArray# RealWorld [FastString] -> Int# -> Int#
+hashToIndex# :: MutableArray# RealWorld (StrictList FastString) -> Int# -> Int#
 hashToIndex# buckets# hash# =
   (hash# `uncheckedIShiftRL#` segmentBits#) `remInt#` size#
   where
@@ -293,7 +299,7 @@ maybeResizeSegment segmentRef = do
   then return segment
   else do
     resizedSegment@(FastStringTableSegment _ _ new#) <- IO $ \s1# ->
-      case newArray# newSize# [] s1# of
+      case newArray# newSize# StrictNil s1# of
         (# s2#, arr# #) -> (# s2#, FastStringTableSegment lock counter arr# #)
     forM_ [0 .. (I# oldSize#) - 1] $ \(I# i#) -> do
       fsList <- IO $ readArray# old# i#
@@ -303,7 +309,7 @@ maybeResizeSegment segmentRef = do
             idx# = hashToIndex# new# hash#
         IO $ \s1# ->
           case readArray# new# idx# s1# of
-            (# s2#, bucket #) -> case writeArray# new# idx# (fs: bucket) s2# of
+            (# s2#, bucket #) -> case writeArray# new# idx# (StrictCons fs bucket) s2# of
               s3# -> (# s3#, () #)
     writeIORef segmentRef resizedSegment
     return resizedSegment
@@ -317,7 +323,7 @@ stringTable = unsafePerformIO $ do
         | isTrue# (i# ==# numSegments#) = s1#
         | otherwise = case newMVar () `unIO` s1# of
             (# s2#, lock #) -> case newIORef 0 `unIO` s2# of
-              (# s3#, counter #) -> case newArray# initialNumBuckets# [] s3# of
+              (# s3#, counter #) -> case newArray# initialNumBuckets# StrictNil s3# of
                 (# s4#, buckets# #) -> case newIORef
                     (FastStringTableSegment lock counter buckets#) `unIO` s4# of
                   (# s5#, segment #) -> case writeArray# a# i# segment s5# of
@@ -436,14 +442,14 @@ mkFastStringWith mk_fs !ptr !len = do
         Just found -> return found
         Nothing -> do
           IO $ \s1# ->
-            case writeArray# buckets# idx# (fs: bucket) s1# of
+            case writeArray# buckets# idx# (StrictCons fs bucket) s1# of
               s2# -> (# s2#, () #)
           modifyIORef' counter succ
           return fs
 
-bucket_match :: [FastString] -> Int -> Ptr Word8 -> IO (Maybe FastString)
-bucket_match [] _ _ = return Nothing
-bucket_match (v@(FastString _ _ bs _):ls) len ptr
+bucket_match :: StrictList FastString -> Int -> Ptr Word8 -> IO (Maybe FastString)
+bucket_match StrictNil _ _ = return Nothing
+bucket_match (StrictCons v@(FastString _ _ bs _) ls) len ptr
       | len == BS.length bs = do
          b <- BS.unsafeUseAsCString bs $ \buf ->
              cmpStringPrefix ptr (castPtr buf) len
@@ -607,7 +613,7 @@ getFastStringTable =
     FastStringTableSegment _ _ buckets# <- readIORef segmentRef
     let bucketSize = I# (sizeofMutableArray# buckets#)
     forM [0 .. bucketSize - 1] $ \(I# j#) ->
-      IO $ readArray# buckets# j#
+      fmap Foldable.toList $ IO $ readArray# buckets# j#
   where
     !(FastStringTable _ _ segments#) = stringTable
 
